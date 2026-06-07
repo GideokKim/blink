@@ -1,0 +1,8 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows. -->
+<Application x:Class="Blink.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- No StartupUri: the app is resident (tray) and shows the launcher on the global hotkey. -->
+    <Application.Resources/>
+</Application>
