@@ -1,0 +1,34 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows. -->
+<Window x:Class="Blink.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Blink — Settings" Width="560" Height="420"
+        WindowStartupLocation="CenterScreen" Background="#FFFFFF">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Indexed folders" FontSize="16" Foreground="#111111" Margin="0,0,0,8"/>
+
+        <ListBox x:Name="FoldersList" Grid.Row="1" Foreground="#111111"/>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button Content="Add folder…" Width="110" Margin="0,0,8,0" Click="AddFolder_Click"/>
+            <Button Content="Remove" Width="90" Margin="0,0,8,0" Click="RemoveFolder_Click"/>
+            <Button Content="Re-index now" Width="110" Click="Reindex_Click"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,14,0,0">
+            <TextBlock Text="Database path" FontSize="12" Foreground="#666666"/>
+            <TextBox x:Name="DbPathText" IsReadOnly="True" Foreground="#111111" BorderThickness="1"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button Content="Save" Width="90" Margin="0,0,8,0" Click="Save_Click"/>
+                <Button Content="Close" Width="90" Click="Close_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>
