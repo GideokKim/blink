@@ -1,0 +1,30 @@
+# .NET build artifacts
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+
+# Publish output
+publish/
+*.app.publish/
+
+# Rider / VS / VS Code
+.idea/
+.vs/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OMC tooling working state (specs/plans/handoffs/state)
+.omc/
+
+# Blink runtime data (config + index live in %APPDATA%/Blink at runtime)
+*.db
+*.db-wal
+*.db-shm
