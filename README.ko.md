@@ -63,6 +63,8 @@ dotnet run --project Blink.Cli -- prune "/path/to/docs"  # 미리보기; --apply
 - **인스톨러 생성:** 가능합니다 — 사용자 단위 Inno Setup 인스톨러가 [`installer/`](installer/README.md)에
   있습니다. Windows에서 앱 + 워커를 publish한 뒤 `iscc installer\blink.iss`를 실행하면
   `Blink-Setup-<버전>.exe`가 생성됩니다(한국어/영어 마법사, 자동 시작 옵션, 인덱서 워커 동봉).
+- **릴리즈 배포:** `vX.Y.Z` 태그를 푸시하면 GitHub Actions가 인스톨러를 빌드하고 릴리즈
+  노트와 함께 Release를 게시합니다 — [`RELEASING.md`](RELEASING.md) 참고.
 
 ## 라이선스
 

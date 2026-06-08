@@ -66,6 +66,8 @@ platform equivalent.
   [`installer/`](installer/README.md). On Windows: publish the app + worker, then
   `iscc installer\blink.iss` produces `Blink-Setup-<version>.exe` (Korean/English wizard,
   optional autostart, bundles the indexer worker).
+- **Cut a release:** push a `vX.Y.Z` tag and GitHub Actions builds the installer and
+  publishes a Release with notes attached — see [`RELEASING.md`](RELEASING.md).
 
 ## License
 
