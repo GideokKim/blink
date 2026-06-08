@@ -8,4 +8,10 @@ namespace Blink.Core.Store;
 public interface IContentStore
 {
     string? GetContent(string docId);
+
+    /// <summary>
+    /// For each id that is a bundle entry, the number of real files it represents.
+    /// Non-bundle / unknown ids are omitted from the result.
+    /// </summary>
+    IReadOnlyDictionary<string, long> GetBundleSizes(IEnumerable<string> docIds);
 }

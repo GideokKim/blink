@@ -44,8 +44,14 @@ switch (cmd)
         var hits = provider.Search(query, limit: 20);
         if (hits.Count == 0) { Console.WriteLine("(no results)"); return 0; }
 
+        var bundleSizes = provider.GetBundleSizes(hits.Select(h => h.DocId));
         foreach (var hit in hits)
         {
+            if (bundleSizes.TryGetValue(hit.DocId, out var count))
+            {
+                Console.WriteLine($"[{hit.Score:F3}] {hit.Path}  (bundle: {count:N0} files)");
+                continue;
+            }
             Console.WriteLine($"[{hit.Score:F3}] {hit.Path}");
             foreach (var line in provider.GetMatchLines(hit.DocId, query, maxLines: 3))
                 Console.WriteLine($"    {line.LineNo}: {line.Text}");

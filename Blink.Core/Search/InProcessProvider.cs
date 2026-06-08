@@ -51,7 +51,7 @@ public sealed class InProcessProvider : ISearchProvider
     }
 
     public IReadOnlyDictionary<string, long> GetBundleSizes(IEnumerable<string> docIds)
-        => new Dictionary<string, long>(); // bundles deferred
+        => _content?.GetBundleSizes(docIds) ?? new Dictionary<string, long>();
 
     private static string Normalize(string s)
         => s.Normalize(NormalizationForm.FormC).ToLowerInvariant();

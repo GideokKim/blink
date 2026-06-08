@@ -68,27 +68,70 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         }
     }
 
+    // Current on-disk schema version. Bump when the schema changes and add a migration step.
+    //   v1: documents(doc_id, path, mtime, size, content)
+    //   v2: + is_bundle, member_count  (virtual bundle entries for collapsed file groups)
+    private const long SchemaVersion = 2;
+
     private void InitSchema()
     {
+        // Full CURRENT schema for fresh databases. Existing databases are brought up to
+        // date by Migrate() below (CREATE IF NOT EXISTS is a no-op on an old table, so new
+        // columns are added there, not here).
         Exec(@"
             CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS documents(
-                rowid   INTEGER PRIMARY KEY,
-                doc_id  TEXT UNIQUE NOT NULL,
-                path    TEXT NOT NULL,
-                mtime   REAL NOT NULL,
-                size    INTEGER NOT NULL,
-                content TEXT NOT NULL
+                rowid        INTEGER PRIMARY KEY,
+                doc_id       TEXT UNIQUE NOT NULL,
+                path         TEXT NOT NULL,
+                mtime        REAL NOT NULL,
+                size         INTEGER NOT NULL,
+                content      TEXT NOT NULL,
+                is_bundle    INTEGER NOT NULL DEFAULT 0,
+                member_count INTEGER NOT NULL DEFAULT 0
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(tokens, tokenize='unicode61');
         ");
 
-        // Seed schema version once.
         using var check = _conn.CreateCommand();
-        check.CommandText = "SELECT COUNT(*) FROM schema_meta;";
-        var count = Convert.ToInt64(check.ExecuteScalar());
-        if (count == 0)
-            Exec("INSERT INTO schema_meta(version) VALUES(1);");
+        check.CommandText = "SELECT version FROM schema_meta LIMIT 1;";
+        var existing = check.ExecuteScalar();
+
+        if (existing is null or DBNull)
+            Exec($"INSERT INTO schema_meta(version) VALUES({SchemaVersion});"); // fresh db
+        else
+            Migrate(Convert.ToInt64(existing));
+    }
+
+    /// <summary>Bring an older database up to <see cref="SchemaVersion"/>.</summary>
+    private void Migrate(long from)
+    {
+        if (from >= SchemaVersion)
+            return;
+
+        if (from < 2)
+        {
+            // v1 → v2: add the bundle columns to the pre-existing documents table.
+            AddColumnIfMissing("documents", "is_bundle", "INTEGER NOT NULL DEFAULT 0");
+            AddColumnIfMissing("documents", "member_count", "INTEGER NOT NULL DEFAULT 0");
+        }
+
+        Exec($"UPDATE schema_meta SET version={SchemaVersion};");
+    }
+
+    private void AddColumnIfMissing(string table, string column, string definition)
+    {
+        bool present = false;
+        using (var info = _conn.CreateCommand())
+        {
+            info.CommandText = $"PRAGMA table_info({table});";
+            using var reader = info.ExecuteReader();
+            while (reader.Read())
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    { present = true; break; }
+        }
+        if (!present)
+            Exec($"ALTER TABLE {table} ADD COLUMN {column} {definition};");
     }
 
     public void Upsert(Document doc)
@@ -122,10 +165,11 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
             ExecParam("DELETE FROM documents WHERE rowid=$r;", tx, ("$r", old));
         }
 
-        ExecParam(@"INSERT INTO documents(doc_id, path, mtime, size, content)
-                    VALUES($id, $path, $mtime, $size, $content);", tx,
+        ExecParam(@"INSERT INTO documents(doc_id, path, mtime, size, content, is_bundle, member_count)
+                    VALUES($id, $path, $mtime, $size, $content, $bundle, $members);", tx,
             ("$id", doc.DocId), ("$path", doc.Path), ("$mtime", doc.Mtime),
-            ("$size", doc.Size), ("$content", doc.Content));
+            ("$size", doc.Size), ("$content", doc.Content),
+            ("$bundle", doc.IsBundle ? 1 : 0), ("$members", doc.MemberCount));
 
         long rowid;
         using (var rid = _conn.CreateCommand())
@@ -254,6 +298,38 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
             var result = cmd.ExecuteScalar();
             return result is null or DBNull ? null : (string)result;
         }
+    }
+
+    /// <summary>
+    /// For each doc id that is a bundle entry, its member count. Non-bundle (or unknown)
+    /// ids are omitted. Lets the UI annotate a hit like "folder of 12,430 images".
+    /// </summary>
+    public IReadOnlyDictionary<string, long> GetBundleSizes(IEnumerable<string> docIds)
+    {
+        var ids = docIds as ICollection<string> ?? docIds.ToList();
+        var result = new Dictionary<string, long>();
+        if (ids.Count == 0)
+            return result;
+
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            // Parameterize each id ($p0,$p1,…) to keep it injection-safe.
+            var names = new List<string>(ids.Count);
+            int i = 0;
+            foreach (var id in ids)
+            {
+                var name = "$p" + i++;
+                names.Add(name);
+                cmd.Parameters.AddWithValue(name, id);
+            }
+            cmd.CommandText =
+                $"SELECT doc_id, member_count FROM documents WHERE is_bundle=1 AND doc_id IN ({string.Join(",", names)});";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result[reader.GetString(0)] = reader.GetInt64(1);
+        }
+        return result;
     }
 
     private void Exec(string sql)

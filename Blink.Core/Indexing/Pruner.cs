@@ -43,8 +43,13 @@ public sealed class Pruner
         foreach (var (docId, _) in store.IterDocsUnder(fullRoot))
         {
             scanned++;
-            // doc_id is the file's full path; a missing file means the doc is stale.
-            if (!File.Exists(docId))
+            // A normal doc_id is the file's full path → stale if the file is gone.
+            // A bundle entry is synthetic (no file on disk) → stale only if its folder is gone;
+            // a shrunk-below-threshold group is handled by the indexer, not here.
+            bool missing = Indexer.IsBundleId(docId)
+                ? !Directory.Exists(Path.GetDirectoryName(docId) ?? docId)
+                : !File.Exists(docId);
+            if (missing)
                 stale.Add(docId);
         }
         return new PrunePlan(stale, scanned);
