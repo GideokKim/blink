@@ -45,6 +45,38 @@ public sealed class IndexerTests : IDisposable
     }
 
     [Fact]
+    public void Index_SkipsJunkFiles()
+    {
+        var dir = NewTree();
+        File.WriteAllText(Path.Combine(dir, "real.txt"), "실제 문서 내용");
+        File.WriteAllText(Path.Combine(dir, "~$real.xlsx"), "office lock garbage"); // must be skipped
+        File.WriteAllText(Path.Combine(dir, "Thumbs.db"), "thumb cache");           // must be skipped
+        File.WriteAllText(Path.Combine(dir, "scratch.tmp"), "temp");                // must be skipped
+
+        using var store = NewStore();
+        new Indexer().Index(dir, store, null, CancellationToken.None);
+
+        Assert.Equal(1, store.Count());          // only real.txt
+        Assert.Single(store.Search("real"));
+        Assert.Empty(store.Search("Thumbs"));    // junk not indexed (not even by name)
+    }
+
+    [Fact]
+    public void Index_HonorsBlinkignore()
+    {
+        var dir = NewTree();
+        File.WriteAllText(Path.Combine(dir, "keep.txt"), "보관 문서");
+        File.WriteAllText(Path.Combine(dir, "drop.txt"), "제외 문서");
+        File.WriteAllText(Path.Combine(dir, ".blinkignore"), "drop.txt\n# comment\n");
+
+        using var store = NewStore();
+        new Indexer().Index(dir, store, null, CancellationToken.None);
+
+        Assert.Single(store.Search("보관"));
+        Assert.Empty(store.Search("제외"));
+    }
+
+    [Fact]
     public void Index_ReportsProgress()
     {
         var dir = NewTree();

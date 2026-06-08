@@ -118,6 +118,48 @@ public sealed class SqliteFtsStoreTests : IDisposable
         Assert.Empty(page1.Select(h => h.DocId).Intersect(page2.Select(h => h.DocId)));
     }
 
+    [Fact]
+    public void ConcurrentReadsAndWrites_DoNotThrow()
+    {
+        // Regression for the shared-connection misuse bug (P0-3): background writes
+        // (indexer) and foreground reads (search) hit the single connection at once.
+        // Before serialization this raised "SQLite Error 21 (misuse)" / "database is
+        // locked"; the gate must make it crash-free.
+        using var store = NewStore();
+        store.Upsert(Doc("/seed.txt", "공통키워드 시드"));
+
+        var errors = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        using var cts = new CancellationTokenSource();
+
+        var writer = Task.Run(() =>
+        {
+            try
+            {
+                for (int i = 0; i < 200 && !cts.IsCancellationRequested; i++)
+                    store.Upsert(Doc($"/docs/{i}.txt", $"공통키워드 본문 {i}"));
+            }
+            catch (Exception ex) { errors.Enqueue(ex); }
+            finally { cts.Cancel(); }
+        });
+
+        var reader = Task.Run(() =>
+        {
+            try
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    _ = store.Search("공통");
+                    _ = store.Count();
+                }
+            }
+            catch (Exception ex) { errors.Enqueue(ex); }
+        });
+
+        Task.WaitAll(writer, reader);
+        Assert.Empty(errors);
+        Assert.True(store.Count() >= 1);
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

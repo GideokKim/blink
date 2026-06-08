@@ -14,13 +14,20 @@ namespace Blink.Core.Store;
 /// in one transaction at the same rowid. <c>bm25(documents_fts)</c> ranks on the tokens
 /// column (lower = better); match-line extraction re-reads <c>documents.content</c>.
 ///
-/// Connection model: a single long-lived writer connection under WAL. SQLite serializes
-/// writes; WAL permits concurrent readers. The vertical slice uses this one connection
-/// for both reads and writes (simple and sufficient for the slice).
+/// Connection model: a single long-lived connection under WAL, shared by reads and
+/// writes. Because one connection is NOT safe for concurrent use (background indexing
+/// writes while the UI searches → "SQLite Error 21 (misuse)" / "database is locked"),
+/// every public operation is serialized through <c>_gate</c>. This trades a little
+/// read/write parallelism for crash-freedom — sufficient at the slice's data scale.
+/// (A future optimization is a dedicated read-only connection over WAL multi-reader.)
 /// </summary>
 public sealed class SqliteFtsStore : IIndexStore, IContentStore
 {
     private readonly SqliteConnection _conn;
+
+    // Serializes all connection access. SqliteConnection is not thread-safe, and the
+    // app drives writes (indexer) and reads (search) from different threads.
+    private readonly object _gate = new();
 
     static SqliteFtsStore()
     {
@@ -86,17 +93,23 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
 
     public void Upsert(Document doc)
     {
-        using var tx = _conn.BeginTransaction();
-        UpsertCore(doc, tx);
-        tx.Commit();
+        lock (_gate)
+        {
+            using var tx = _conn.BeginTransaction();
+            UpsertCore(doc, tx);
+            tx.Commit();
+        }
     }
 
     public void UpsertMany(IEnumerable<Document> docs)
     {
-        using var tx = _conn.BeginTransaction();
-        foreach (var doc in docs)
-            UpsertCore(doc, tx);
-        tx.Commit();
+        lock (_gate)
+        {
+            using var tx = _conn.BeginTransaction();
+            foreach (var doc in docs)
+                UpsertCore(doc, tx);
+            tx.Commit();
+        }
     }
 
     private void UpsertCore(Document doc, SqliteTransaction tx)
@@ -146,28 +159,40 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
 
     public void DeleteMany(IEnumerable<string> docIds)
     {
-        using var tx = _conn.BeginTransaction();
-        foreach (var id in docIds)
+        lock (_gate)
         {
-            if (FindRowId(id, tx) is long r)
+            using var tx = _conn.BeginTransaction();
+            foreach (var id in docIds)
             {
-                ExecParam("DELETE FROM documents_fts WHERE rowid=$r;", tx, ("$r", r));
-                ExecParam("DELETE FROM documents WHERE rowid=$r;", tx, ("$r", r));
+                if (FindRowId(id, tx) is long r)
+                {
+                    ExecParam("DELETE FROM documents_fts WHERE rowid=$r;", tx, ("$r", r));
+                    ExecParam("DELETE FROM documents WHERE rowid=$r;", tx, ("$r", r));
+                }
             }
+            tx.Commit();
         }
-        tx.Commit();
     }
 
     public IEnumerable<(string DocId, double Mtime)> IterDocsUnder(string root)
     {
         var prefix = Path.GetFullPath(root);
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT doc_id, mtime FROM documents WHERE doc_id=$p OR doc_id LIKE $like ORDER BY doc_id;";
-        cmd.Parameters.AddWithValue("$p", prefix);
-        cmd.Parameters.AddWithValue("$like", prefix.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "%");
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-            yield return (reader.GetString(0), reader.GetDouble(1));
+        // Materialize under the gate rather than yielding lazily: a lazy iterator would
+        // hold no lock between the consumer's MoveNext calls, racing with concurrent
+        // writes (and risking re-entrant lock attempts). Callers use this to build an
+        // in-memory (doc_id → mtime) map, so eager materialization is fine.
+        var result = new List<(string, double)>();
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT doc_id, mtime FROM documents WHERE doc_id=$p OR doc_id LIKE $like ORDER BY doc_id;";
+            cmd.Parameters.AddWithValue("$p", prefix);
+            cmd.Parameters.AddWithValue("$like", prefix.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "%");
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add((reader.GetString(0), reader.GetDouble(1)));
+        }
+        return result;
     }
 
     public IReadOnlyList<SearchHit> Search(string query, int limit = 50, int offset = 0)
@@ -182,30 +207,36 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         // AND-join FTS5 phrase-quoted tokens; escape embedded double-quotes by doubling.
         var match = string.Join(" AND ", tokens.Select(t => "\"" + t.Replace("\"", "\"\"") + "\""));
 
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = @"
-            SELECT d.doc_id, d.path, bm25(documents_fts) AS score
-            FROM documents_fts f
-            JOIN documents d ON d.rowid = f.rowid
-            WHERE documents_fts MATCH $m
-            ORDER BY bm25(documents_fts) ASC, d.doc_id
-            LIMIT $limit OFFSET $offset;";
-        cmd.Parameters.AddWithValue("$m", match);
-        cmd.Parameters.AddWithValue("$limit", limit);
-        cmd.Parameters.AddWithValue("$offset", offset);
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT d.doc_id, d.path, bm25(documents_fts) AS score
+                FROM documents_fts f
+                JOIN documents d ON d.rowid = f.rowid
+                WHERE documents_fts MATCH $m
+                ORDER BY bm25(documents_fts) ASC, d.doc_id
+                LIMIT $limit OFFSET $offset;";
+            cmd.Parameters.AddWithValue("$m", match);
+            cmd.Parameters.AddWithValue("$limit", limit);
+            cmd.Parameters.AddWithValue("$offset", offset);
 
-        var hits = new List<SearchHit>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-            hits.Add(new SearchHit(reader.GetString(0), reader.GetString(1), reader.GetDouble(2)));
-        return hits;
+            var hits = new List<SearchHit>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                hits.Add(new SearchHit(reader.GetString(0), reader.GetString(1), reader.GetDouble(2)));
+            return hits;
+        }
     }
 
     public int Count()
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM documents;";
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM documents;";
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
     }
 
     /// <summary>
@@ -215,11 +246,14 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
     /// </summary>
     public string? GetContent(string docId)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT content FROM documents WHERE doc_id=$id;";
-        cmd.Parameters.AddWithValue("$id", docId);
-        var result = cmd.ExecuteScalar();
-        return result is null or DBNull ? null : (string)result;
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT content FROM documents WHERE doc_id=$id;";
+            cmd.Parameters.AddWithValue("$id", docId);
+            var result = cmd.ExecuteScalar();
+            return result is null or DBNull ? null : (string)result;
+        }
     }
 
     private void Exec(string sql)

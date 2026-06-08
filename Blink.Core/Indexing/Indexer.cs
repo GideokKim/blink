@@ -13,9 +13,20 @@ public sealed class Indexer
 {
     private const int BatchSize = 500;
 
+    private readonly FileExcluder? _excluder;
+
+    /// <param name="excluder">
+    /// Optional exclusion ruleset. When null, each <see cref="Index"/> call builds one
+    /// from the built-in defaults plus a <c>.blinkignore</c> at the root.
+    /// </param>
+    public Indexer(FileExcluder? excluder = null) => _excluder = excluder;
+
     public void Index(string root, IIndexStore store, IProgress<IndexProgress>? progress, CancellationToken ct)
     {
-        var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList();
+        var excluder = _excluder ?? FileExcluder.ForRoot(root);
+        var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(p => !excluder.IsExcluded(p, root))
+            .ToList();
         int total = files.Count;
         int processed = 0;
         var batch = new List<Document>(BatchSize);
