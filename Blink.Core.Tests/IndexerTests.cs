@@ -115,6 +115,78 @@ public sealed class IndexerTests : IDisposable
         _ = store.Search("취소"); // does not throw
     }
 
+    [Fact]
+    public void Index_Incremental_SkipsUnchanged_ReindexesModified()
+    {
+        var dir = NewTree();
+        var a = Path.Combine(dir, "a.txt");
+        var b = Path.Combine(dir, "b.txt");
+        File.WriteAllText(a, "처음 내용 알파");
+        File.WriteAllText(b, "둘째 내용 베타");
+
+        using var store = NewStore();
+        var counting = new CountingStore(store);
+
+        // First pass: both files indexed.
+        new Indexer().Index(dir, counting, null, CancellationToken.None);
+        Assert.Equal(2, counting.UpsertedDocs);
+        Assert.Equal(2, store.Count());
+
+        // Second pass with no changes: nothing re-upserted.
+        counting.UpsertedDocs = 0;
+        new Indexer().Index(dir, counting, null, CancellationToken.None);
+        Assert.Equal(0, counting.UpsertedDocs);
+
+        // Modify a's content AND bump its mtime; only a should be re-indexed.
+        File.WriteAllText(a, "바뀐 내용 감마");
+        File.SetLastWriteTimeUtc(a, DateTime.UtcNow.AddSeconds(5));
+        counting.UpsertedDocs = 0;
+        new Indexer().Index(dir, counting, null, CancellationToken.None);
+        Assert.Equal(1, counting.UpsertedDocs);
+
+        Assert.Empty(store.Search("처음"));   // old content gone
+        Assert.Single(store.Search("감마"));   // new content present
+        Assert.Single(store.Search("베타"));   // b untouched
+    }
+
+    [Fact]
+    public void Index_Incremental_NewFileIsAdded()
+    {
+        var dir = NewTree();
+        File.WriteAllText(Path.Combine(dir, "a.txt"), "기존 문서");
+
+        using var store = NewStore();
+        new Indexer().Index(dir, store, null, CancellationToken.None);
+        Assert.Equal(1, store.Count());
+
+        File.WriteAllText(Path.Combine(dir, "new.txt"), "신규 문서");
+        new Indexer().Index(dir, store, null, CancellationToken.None);
+        Assert.Equal(2, store.Count());
+        Assert.Single(store.Search("신규"));
+    }
+
+    /// <summary>Wraps a store, counting how many documents pass through Upsert/UpsertMany.</summary>
+    private sealed class CountingStore : IIndexStore
+    {
+        private readonly IIndexStore _inner;
+        public int UpsertedDocs;
+        public CountingStore(IIndexStore inner) => _inner = inner;
+
+        public void Upsert(Blink.Core.Model.Document doc) { UpsertedDocs++; _inner.Upsert(doc); }
+        public void UpsertMany(IEnumerable<Blink.Core.Model.Document> docs)
+        {
+            var list = docs.ToList();
+            UpsertedDocs += list.Count;
+            _inner.UpsertMany(list);
+        }
+        public void Delete(string docId) => _inner.Delete(docId);
+        public void DeleteMany(IEnumerable<string> ids) => _inner.DeleteMany(ids);
+        public IEnumerable<(string DocId, double Mtime)> IterDocsUnder(string root) => _inner.IterDocsUnder(root);
+        public IReadOnlyList<Blink.Core.Model.SearchHit> Search(string q, int limit = 50, int offset = 0) => _inner.Search(q, limit, offset);
+        public int Count() => _inner.Count();
+        public void Dispose() { /* inner disposed by the test */ }
+    }
+
     private sealed class SyncProgress : IProgress<IndexProgress>
     {
         public List<IndexProgress> Reports { get; } = new();

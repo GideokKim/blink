@@ -8,6 +8,11 @@ namespace Blink.Core.Indexing;
 /// Single-pass recursive indexer. Walks a folder, parses each file, and batch-upserts
 /// <see cref="Document"/>s into an <see cref="IIndexStore"/>. Reports progress via
 /// <c>IProgress&lt;IndexProgress&gt;</c> and honours cancellation between files.
+///
+/// Indexing is INCREMENTAL: it first reads the stored (doc_id, mtime) for the subtree
+/// and skips files whose modification time is unchanged, re-parsing only new/modified
+/// files. This matches the prototype and avoids re-reading an entire NAS/CloudDoc tree
+/// on every run. (Deletions are handled separately by the pruner.)
 /// </summary>
 public sealed class Indexer
 {
@@ -27,6 +32,12 @@ public sealed class Indexer
         var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
             .Where(p => !excluder.IsExcluded(p, root))
             .ToList();
+
+        // Existing (doc_id → stored mtime) for this subtree, to skip unchanged files.
+        var known = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var (docId, mtime) in store.IterDocsUnder(root))
+            known[docId] = (long)mtime;
+
         int total = files.Count;
         int processed = 0;
         var batch = new List<Document>(BatchSize);
@@ -35,19 +46,29 @@ public sealed class Indexer
         {
             ct.ThrowIfCancellationRequested();
 
+            var docId = Path.GetFullPath(path);
+            long mtime = new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeSeconds();
+            processed++;
+
+            // Skip files whose mtime matches what we already indexed.
+            if (known.TryGetValue(docId, out var storedMtime) && storedMtime == mtime)
+            {
+                progress?.Report(new IndexProgress(processed, total, path));
+                continue;
+            }
+
             var parser = ParserRegistry.GetParser(path);
             string content = parser.ReadsContent ? SafeExtract(parser, path) : string.Empty;
 
             var doc = new Document(
-                DocId: Path.GetFullPath(path),
+                DocId: docId,
                 Path: path,
-                Mtime: new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeSeconds(),
+                Mtime: mtime,
                 Size: SafeSize(path),
                 // Pure content; the store also indexes the filename for findability.
                 Content: content);
 
             batch.Add(doc);
-            processed++;
 
             if (batch.Count >= BatchSize)
             {
