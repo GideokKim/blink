@@ -9,15 +9,22 @@ namespace Blink.Core.Indexing;
 /// <see cref="Document"/>s into an <see cref="IIndexStore"/>. Reports progress via
 /// <c>IProgress&lt;IndexProgress&gt;</c> and honours cancellation.
 ///
-/// INCREMENTAL: reads the stored (doc_id, mtime) for the subtree and re-parses only
-/// new/modified files (deletions are handled by the pruner).
+/// THREE PASSES over a disk-backed <see cref="ScanCache"/> keep peak memory small at
+/// target scale (millions of files in one tree):
+///   1. scan  — one directory walk, spill every non-excluded path to disk;
+///   2. plan  — stream the scan to count bundle candidates per (folder, extension);
+///   3. apply — stream again to upsert individuals (incrementally) and collapse large
+///              homogeneous groups into bundle markers.
 ///
-/// BUNDLING: filename-only files (images, data — anything with no content parser) that
-/// pile up in one folder under the same extension are collapsed, once a group reaches
-/// <see cref="_bundleThreshold"/>, into a single virtual "bundle" document instead of one
-/// row per file. This keeps the index small and indexing fast for folders holding
-/// millions of sequentially-named files. Content-bearing files (txt/pdf/docx/…) are
-/// never bundled — they stay individually searchable. Pass a threshold of 0 to disable.
+/// INCREMENTAL: stored (doc_id, mtime) is read once; unchanged files are skipped
+/// (deletions are handled by the pruner).
+///
+/// BUNDLING: filename-only files (images/data — anything with no content parser) that
+/// pile up in one folder under one extension are collapsed, past
+/// <see cref="_bundleThreshold"/>, into a single virtual "__bundle__&lt;ext&gt;" document
+/// carrying a member count — so a folder of millions of sequentially-named images costs
+/// one row, not millions. Content-bearing files (txt/pdf/docx/…) are never bundled.
+/// Threshold 0 disables bundling.
 /// </summary>
 public sealed class Indexer
 {
@@ -43,65 +50,73 @@ public sealed class Indexer
     public void Index(string root, IIndexStore store, IProgress<IndexProgress>? progress, CancellationToken ct)
     {
         var excluder = _excluder ?? FileExcluder.ForRoot(root);
-        var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(p => !excluder.IsExcluded(p, root));
+        var rootFull = Path.GetFullPath(root);
 
-        // --- Plan: separate individually-indexed files from bundle candidates. ---
-        // A bundle candidate is a filename-only file (no content parser) with an extension;
-        // candidates are grouped by (folder, extension) and collapsed only past the threshold.
-        var groups = new Dictionary<(string Dir, string Ext), List<string>>();
-        var individuals = new List<string>();
-
-        foreach (var path in files)
+        // --- Pass 1: scan. One walk, spill paths to disk (no per-file stat yet). ---
+        using var scan = new ScanCache();
+        foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
-            var ext = Path.GetExtension(path).ToLowerInvariant();
-            if (_bundleThreshold > 0 && ext.Length > 0 && !ParserRegistry.GetParser(path).ReadsContent)
-            {
-                var dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? Path.GetFullPath(root);
-                var key = (dir, ext);
-                if (!groups.TryGetValue(key, out var list))
-                    groups[key] = list = new List<string>();
-                list.Add(path);
-            }
+            ct.ThrowIfCancellationRequested();
+            if (!excluder.IsExcluded(path, root))
+                scan.Append(path);
+        }
+        scan.Seal();
+
+        // --- Pass 2: plan. Count bundle candidates per (folder, extension). ---
+        var counts = new Dictionary<(string Dir, string Ext), int>();
+        int individualCount = 0;
+        foreach (var path in scan.ReadAll())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (TryBundleKey(path, rootFull, out var key))
+                counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
             else
-            {
-                individuals.Add(path);
-            }
+                individualCount++;
         }
 
-        var bundles = new List<((string Dir, string Ext) Key, List<string> Members)>();
-        var staleBundleIds = new List<string>();
-        foreach (var (key, members) in groups)
+        var bundleGroups = new HashSet<(string Dir, string Ext)>();
+        int subThresholdMembers = 0;
+        foreach (var (key, count) in counts)
         {
-            if (members.Count >= _bundleThreshold)
-                bundles.Add((key, members));
-            else
-            {
-                individuals.AddRange(members);     // below threshold → index individually
-                staleBundleIds.Add(BundleId(key)); // and drop any bundle made for it on a prior run
-            }
+            if (count >= _bundleThreshold) bundleGroups.Add(key);
+            else subThresholdMembers += count;
         }
 
-        int total = individuals.Count + bundles.Count;
+        int total = individualCount + subThresholdMembers + bundleGroups.Count;
         int processed = 0;
 
-        // Existing (doc_id → stored mtime) for this subtree, for incremental skip and to
-        // bound member deletions to entries that actually exist.
+        // Stored (doc_id → mtime); small once bundles collapse. Drives incremental skip
+        // and bounds member deletions to entries that actually exist.
         var known = new Dictionary<string, long>(StringComparer.Ordinal);
         foreach (var (docId, mtime) in store.IterDocsUnder(root))
             known[docId] = (long)mtime;
 
-        // Drop obsolete bundle markers (group fell below threshold), but only if present.
-        var staleToDelete = staleBundleIds.Where(known.ContainsKey).ToList();
-        if (staleToDelete.Count > 0)
-            store.DeleteMany(staleToDelete);
+        // Drop bundle markers for groups that are no longer bundles.
+        var staleBundleIds = counts.Keys.Where(k => !bundleGroups.Contains(k))
+            .Select(BundleId).Where(known.ContainsKey).ToList();
+        if (staleBundleIds.Count > 0)
+            store.DeleteMany(staleBundleIds);
 
         var batch = new List<Document>(BatchSize);
+        var memberDeletes = new List<string>(BatchSize);
 
-        // --- Individual files (incremental) ---
-        foreach (var path in individuals)
+        // --- Pass 3: apply. Individuals incrementally; bundle members removed if present. ---
+        foreach (var path in scan.ReadAll())
         {
             ct.ThrowIfCancellationRequested();
+
+            if (TryBundleKey(path, rootFull, out var key) && bundleGroups.Contains(key))
+            {
+                // Member of a bundle: not indexed individually. Remove a prior individual
+                // entry only if one exists (so steady-state re-index costs ~nothing).
+                var memberId = Path.GetFullPath(path);
+                if (known.ContainsKey(memberId))
+                {
+                    memberDeletes.Add(memberId);
+                    if (memberDeletes.Count >= BatchSize) { store.DeleteMany(memberDeletes); memberDeletes.Clear(); }
+                }
+                continue;
+            }
 
             var docId = Path.GetFullPath(path);
             long mtime = new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeSeconds();
@@ -122,32 +137,44 @@ public sealed class Indexer
             progress?.Report(new IndexProgress(processed, total, path));
         }
 
-        // --- Bundle entries: remove any individually-indexed members, emit one marker. ---
-        foreach (var (key, members) in bundles)
+        if (memberDeletes.Count > 0)
+            store.DeleteMany(memberDeletes);
+
+        // Emit one marker per bundle group.
+        foreach (var key in bundleGroups)
         {
             ct.ThrowIfCancellationRequested();
-
-            // Only delete members that were actually indexed individually before (bounded
-            // by `known`), so steady-state re-indexing of a huge bundle costs ~nothing.
-            var toDelete = members.Select(Path.GetFullPath).Where(known.ContainsKey).ToList();
-            if (toDelete.Count > 0)
-                store.DeleteMany(toDelete);
-
             batch.Add(new Document(
                 DocId: BundleId(key),
                 Path: key.Dir,                    // the folder is the display/open target
                 Mtime: 0, Size: 0,                // members are not stat'd; a bundle is just a marker
                 Content: key.Ext.TrimStart('.'),  // extension is searchable; folder name comes from Path
                 IsBundle: true,
-                MemberCount: members.Count));
+                MemberCount: counts[key]));
             processed++;
             if (batch.Count >= BatchSize) { store.UpsertMany(batch); batch.Clear(); }
-
             progress?.Report(new IndexProgress(processed, total, key.Dir));
         }
 
         if (batch.Count > 0)
             store.UpsertMany(batch);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> is a bundle candidate (filename-only file with an
+    /// extension), and if so its (folder, extension) group key.
+    /// </summary>
+    private bool TryBundleKey(string path, string rootFull, out (string Dir, string Ext) key)
+    {
+        key = default;
+        if (_bundleThreshold <= 0)
+            return false;
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        if (ext.Length == 0 || ParserRegistry.GetParser(path).ReadsContent)
+            return false;
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? rootFull;
+        key = (dir, ext);
+        return true;
     }
 
     /// <summary>Reserved file-name prefix marking a synthetic bundle entry.</summary>
