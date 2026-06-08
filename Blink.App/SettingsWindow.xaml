@@ -23,6 +23,8 @@
         </StackPanel>
 
         <StackPanel Grid.Row="3" Margin="0,14,0,0">
+            <CheckBox x:Name="AutostartCheck" Content="Start Blink when I sign in to Windows"
+                      Foreground="#111111" Margin="0,0,0,10"/>
             <TextBlock Text="Database path" FontSize="12" Foreground="#666666"/>
             <TextBox x:Name="DbPathText" IsReadOnly="True" Foreground="#111111" BorderThickness="1"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

@@ -21,6 +21,7 @@ public sealed class AppConfigTests : IDisposable
         {
             Folders = new[] { @"C:\docs", "/home/user/notes" },
             DbPath = Path.Combine(_dir, "custom.db"),
+            Autostart = true,
         };
         cfg.Save(_dir);
 
@@ -29,6 +30,13 @@ public sealed class AppConfigTests : IDisposable
         var loaded = AppConfig.Load(_dir);
         Assert.Equal(cfg.Folders, loaded.Folders);
         Assert.Equal(cfg.DbPath, loaded.DbPath);
+        Assert.True(loaded.Autostart);
+    }
+
+    [Fact]
+    public void Autostart_DefaultsFalse()
+    {
+        Assert.False(AppConfig.Load(_dir).Autostart);
     }
 
     [Fact]

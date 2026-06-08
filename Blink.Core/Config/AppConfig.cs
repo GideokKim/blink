@@ -15,6 +15,13 @@ public sealed class AppConfig
     [JsonPropertyName("db_path")]
     public string DbPath { get; set; } = "";
 
+    /// <summary>
+    /// Whether Blink registers itself to launch at Windows sign-in. Persisted here; the
+    /// actual HKCU\…\Run registration is applied by the Windows-only app layer.
+    /// </summary>
+    [JsonPropertyName("autostart")]
+    public bool Autostart { get; set; }
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

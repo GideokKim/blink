@@ -1,6 +1,7 @@
 // Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
 using System.Collections.ObjectModel;
 using System.Windows;
+using Blink.App.Interop;
 using Blink.Core.Config;
 
 namespace Blink.App;
@@ -20,6 +21,8 @@ public partial class SettingsWindow : Window
         _folders = new ObservableCollection<string>(config.Folders);
         FoldersList.ItemsSource = _folders;
         DbPathText.Text = config.DbPath;
+        // Reflect the actual registry state, falling back to the saved preference.
+        AutostartCheck.IsChecked = AutostartManager.IsEnabled() || config.Autostart;
     }
 
     private void AddFolder_Click(object sender, RoutedEventArgs e)
@@ -43,6 +46,8 @@ public partial class SettingsWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         _config.Folders = _folders.ToArray();
+        _config.Autostart = AutostartCheck.IsChecked == true;
+        AutostartManager.Apply(_config.Autostart);
         _config.Save();
         MessageBox.Show("Saved.", "Blink", MessageBoxButton.OK, MessageBoxImage.Information);
     }
