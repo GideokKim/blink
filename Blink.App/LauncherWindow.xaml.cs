@@ -19,22 +19,26 @@ public enum LauncherDirection { Classic, Split }
 public partial class LauncherWindow : Window
 {
     private readonly LauncherViewModel _vm;
+    private readonly IndexingStatusViewModel _status;
     private readonly ClassicView _classic;
     private readonly SplitView _split;
     private readonly DispatcherTimer _toastTimer;
     private bool _suppressHide;
+    private bool _dotPulsing;
     private LauncherDirection _direction = LauncherDirection.Classic;
 
     private const double WidthClassic = 640;
     private const double WidthSplit = 880;
 
-    internal LauncherWindow(IReadOnlyList<LaunchItem> index)
+    internal LauncherWindow(IReadOnlyList<LaunchItem> index, IndexingStatusViewModel status)
     {
         InitializeComponent();
 
         _vm = new LauncherViewModel(index);
+        _status = status;
         DataContext = _vm;
         _vm.PropertyChanged += OnVmChanged;
+        _status.PropertyChanged += (_, _) => UpdateChrome(); // indexing status → footer
 
         _classic = new ClassicView { DataContext = _vm };
         _split = new SplitView { DataContext = _vm };
@@ -132,9 +136,39 @@ public partial class LauncherWindow : Window
         CountLabel.Visibility = !classic && _vm.HasResults ? Visibility.Visible : Visibility.Collapsed;
         CountLabel.Text = _vm.ResultCountText;
 
-        FooterCaption.Text = classic
-            ? $"{_vm.IndexCountText} 항목 인덱싱됨"
-            : $"{_vm.IndexCountText} 항목 · 전문 인덱스";
+        // Footer: live indexing status when running, else the indexed-count caption.
+        if (_status.IsIndexing)
+        {
+            FooterCaption.Text = $"인덱싱 중… {_status.Percent}%";
+            SetDotPulse(true);
+        }
+        else
+        {
+            var count = (_status.HasCount ? _status.DocumentCount : _vm.IndexCount).ToString("N0");
+            FooterCaption.Text = classic ? $"{count} 항목 인덱싱됨" : $"{count} 항목 · 전문 인덱스";
+            SetDotPulse(false);
+        }
+    }
+
+    /// <summary>Pulse the footer status dot while indexing (opacity 1 ↔ 0.45, looping).</summary>
+    private void SetDotPulse(bool on)
+    {
+        if (on == _dotPulsing) return;
+        _dotPulsing = on;
+        if (on)
+        {
+            var pulse = new DoubleAnimation(1.0, 0.45, TimeSpan.FromSeconds(0.7))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+            StatusDot.BeginAnimation(OpacityProperty, pulse);
+        }
+        else
+        {
+            StatusDot.BeginAnimation(OpacityProperty, null); // clear animation
+            StatusDot.Opacity = 1.0;
+        }
     }
 
     // ── Keyboard (↑/↓ wrap, Enter, Esc 1-clear/2-hide) ──────────────────────────

@@ -2,9 +2,9 @@
 using System.Windows;
 using Blink.App.Interop;
 using Blink.App.Theming;
+using Blink.App.ViewModels;
 using Blink.Core.Config;
 using Blink.Core.Launch;
-using Blink.Core.Search;
 using Blink.Core.Store;
 using Forms = System.Windows.Forms;
 
@@ -19,6 +19,7 @@ public partial class App : Application
     private IndexingService? _indexing;
     private Forms.NotifyIcon? _tray;
     private AppConfig _config = new();
+    private readonly IndexingStatusViewModel _status = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -35,12 +36,15 @@ public partial class App : Application
         // The launcher UI runs the ported launcher engine over an index. The demo index
         // reproduces the design; production wiring (installed apps + Blink.Core file/content
         // search) feeds real LaunchItems into the same view-model.
-        _launcher = new LauncherWindow(DemoIndex.Items);
+        _launcher = new LauncherWindow(DemoIndex.Items, _status);
         _launcher.SetDirection(DirectionOf(_config));
 
-        // Production content index (kept running; not yet surfaced in the launcher UI).
+        // Production content index. Indexing progress is surfaced live via _status to the
+        // launcher footer and the Settings window.
         _store = new SqliteFtsStore(_config.DbPath);
         _indexing = new IndexingService();
+        _indexing.ProgressChanged += p => _status.Report(p);          // UI thread (Progress<T>)
+        _indexing.Completed += OnIndexingCompleted;                    // background thread → marshal
 
         _hotkey = new HotkeyHook();
         _hotkey.HotkeyPressed += () => _launcher!.Summon();
@@ -48,8 +52,19 @@ public partial class App : Application
         SetupTray();
 
         if (_config.Folders.Length > 0)
-            _ = _indexing.ReindexAsync(_config.Folders, _store);
+            StartReindex(_config.Folders);
     }
+
+    /// <summary>Begin a reindex and flip the shared status to "indexing".</summary>
+    private void StartReindex(IReadOnlyList<string> folders)
+    {
+        if (_store is null || _indexing is null) return;
+        _status.Begin();
+        _ = _indexing.ReindexAsync(folders, _store);
+    }
+
+    private void OnIndexingCompleted()
+        => Dispatcher.Invoke(() => _status.Complete(_store?.Count() ?? 0));
 
     private static LauncherTheme ThemeOf(AppConfig c) =>
         string.Equals(c.Theme, "light", StringComparison.OrdinalIgnoreCase) ? LauncherTheme.Light : LauncherTheme.Dark;
@@ -111,12 +126,8 @@ public partial class App : Application
 
     private void OpenSettings()
     {
-        var win = new SettingsWindow(_config);
-        win.ReindexRequested += folders =>
-        {
-            if (_store is not null)
-                _ = _indexing!.ReindexAsync(folders, _store);
-        };
+        var win = new SettingsWindow(_config, _status);
+        win.ReindexRequested += folders => StartReindex(folders);
         win.Show();
         win.Activate();
     }

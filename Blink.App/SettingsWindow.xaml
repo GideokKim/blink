@@ -25,6 +25,17 @@
         <StackPanel Grid.Row="3" Margin="0,14,0,0">
             <CheckBox x:Name="AutostartCheck" Content="Start Blink when I sign in to Windows"
                       Foreground="#111111" Margin="0,0,0,10"/>
+
+            <!-- Indexing progress (bound to the shared IndexingStatusViewModel) -->
+            <StackPanel x:Name="ProgressArea" Margin="0,0,0,10">
+                <ProgressBar x:Name="IndexProgressBar" Height="6" Minimum="0" Maximum="100"
+                             Value="{Binding Percent}"
+                             Visibility="{Binding IsIndexing, Converter={StaticResource Blink.BoolToVis}}"/>
+                <TextBlock x:Name="IndexStatusText" Text="{Binding StatusText}"
+                           FontSize="11.5" Foreground="#666666" Margin="0,4,0,0"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+
             <TextBlock Text="Database path" FontSize="12" Foreground="#666666"/>
             <TextBox x:Name="DbPathText" IsReadOnly="True" Foreground="#111111" BorderThickness="1"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

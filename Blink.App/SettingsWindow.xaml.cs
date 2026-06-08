@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using Blink.App.Interop;
+using Blink.App.ViewModels;
 using Blink.Core.Config;
 
 namespace Blink.App;
@@ -14,7 +15,7 @@ public partial class SettingsWindow : Window
     /// <summary>Raised when the user requests a re-index with the current folder set.</summary>
     public event Action<IReadOnlyList<string>>? ReindexRequested;
 
-    public SettingsWindow(AppConfig config)
+    public SettingsWindow(AppConfig config, IndexingStatusViewModel status)
     {
         InitializeComponent();
         _config = config;
@@ -23,6 +24,8 @@ public partial class SettingsWindow : Window
         DbPathText.Text = config.DbPath;
         // Reflect the actual registry state, falling back to the saved preference.
         AutostartCheck.IsChecked = AutostartManager.IsEnabled() || config.Autostart;
+        // Live indexing progress.
+        ProgressArea.DataContext = status;
     }
 
     private void AddFolder_Click(object sender, RoutedEventArgs e)

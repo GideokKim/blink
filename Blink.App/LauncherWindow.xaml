@@ -92,7 +92,7 @@
                         CornerRadius="0,0,20,20">
                     <Grid Margin="20,11">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
-                            <Ellipse Width="6" Height="6" Fill="{DynamicResource Blink.Accent}" VerticalAlignment="Center">
+                            <Ellipse x:Name="StatusDot" Width="6" Height="6" Fill="{DynamicResource Blink.Accent}" VerticalAlignment="Center">
                                 <Ellipse.Effect>
                                     <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="{DynamicResource Blink.AccentColor}" Opacity="0.9"/>
                                 </Ellipse.Effect>
