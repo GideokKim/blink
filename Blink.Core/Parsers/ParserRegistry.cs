@@ -6,16 +6,29 @@ namespace Blink.Core.Parsers;
 /// </summary>
 public static class ParserRegistry
 {
-    private static readonly TextParser _textParser = new();
     private static readonly FilenameOnlyParser _filenameParser = new();
+
+    // Content parsers, registered by the extensions they declare. Add a parser here and
+    // its Extensions are auto-mapped; unknown extensions fall back to filename-only.
+    private static readonly IParser[] _contentParsers =
+    {
+        new TextParser(),
+        new XlsxParser(),
+        new PdfParser(),
+        new DocxParser(),
+        new PptxParser(),
+        new HwpxParser(),
+        new RtfParser(),
+    };
 
     private static readonly Dictionary<string, IParser> _byExtension =
         new(StringComparer.OrdinalIgnoreCase);
 
     static ParserRegistry()
     {
-        foreach (var ext in _textParser.Extensions)
-            _byExtension[ext] = _textParser;
+        foreach (var parser in _contentParsers)
+            foreach (var ext in parser.Extensions)
+                _byExtension[ext] = parser;
     }
 
     /// <summary>Returns the best-matching parser for <paramref name="path"/>.</summary>
