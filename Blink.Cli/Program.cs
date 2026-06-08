@@ -30,7 +30,10 @@ switch (cmd)
         using var store = new SqliteFtsStore(cfg.DbPath);
         var progress = new Progress<IndexProgress>(p =>
             Console.Write($"\rindexing {p.Processed}/{p.Total} ..."));
-        new Indexer().Index(folder, store, progress, CancellationToken.None);
+        var indexer = new Indexer();
+        // A drive root (L:\) is split into its child folders, each indexed independently.
+        foreach (var root in DriveSplit.Expand(folder))
+            indexer.Index(root, store, progress, CancellationToken.None);
         Console.WriteLine($"\rdone. {store.Count()} documents indexed -> {cfg.DbPath}");
         return 0;
     }
