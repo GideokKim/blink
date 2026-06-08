@@ -1,0 +1,91 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+     Shared chrome: fonts + reusable text/keycap styles. Color tokens (Blink.*) are
+     published at runtime by ThemeManager as DynamicResources. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- Font stacks: bundle Sora / JetBrains Mono / Pretendard, or use installed equivalents. -->
+    <FontFamily x:Key="Blink.Sora">Sora, Pretendard, Segoe UI</FontFamily>
+    <FontFamily x:Key="Blink.Mono">JetBrains Mono, Consolas, Cascadia Mono</FontFamily>
+
+    <BooleanToVisibilityConverter x:Key="Blink.BoolToVis"/>
+
+    <!-- Key-cap chip (↑ ↓ ↵ esc ⌘C): mono, tile fill, hairline border, radius 6 -->
+    <Style x:Key="Blink.KbdBorder" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource Blink.Tile}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Blink.TileLine}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="Blink.KbdText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource Blink.Mono}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{DynamicResource Blink.TxtDim}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Type tag (앱 / 파일 / 폴더 / 문서 내용 …): mono, faint -->
+    <Style x:Key="Blink.TypeTag" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource Blink.Mono}"/>
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="Foreground" Value="{DynamicResource Blink.TxtFaint}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Mono caption (footer, sizes, paths) -->
+    <Style x:Key="Blink.MonoFaint" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource Blink.Mono}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="Foreground" Value="{DynamicResource Blink.TxtFaint}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Action pill buttons (Direction B preview): tile fill / accent-soft for primary -->
+    <Style x:Key="Blink.Pill" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource Blink.Sora}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" CornerRadius="10" Padding="14,9"
+                            Background="{DynamicResource Blink.Tile}"
+                            BorderBrush="{DynamicResource Blink.TileLine}" BorderThickness="1">
+                        <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Blink.HairlineStrong}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="Blink.PillPrimary" TargetType="Button" BasedOn="{StaticResource Blink.Pill}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border CornerRadius="10" Padding="14,9"
+                            Background="{DynamicResource Blink.AccentSoft}"
+                            BorderBrush="{DynamicResource Blink.AccentLine}" BorderThickness="1">
+                        <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Content-match badge (문서 내용 일치): accent text + accent-line border, radius 5 -->
+    <Style x:Key="Blink.ContentBadge" TargetType="Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="5"/>
+        <Setter Property="Padding" Value="6,1"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+</ResourceDictionary>

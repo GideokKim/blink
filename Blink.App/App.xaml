@@ -3,6 +3,13 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
-    <!-- No StartupUri: the app is resident (tray) and shows the launcher on the global hotkey. -->
-    <Application.Resources/>
+    <!-- No StartupUri: the app is resident (tray) and shows the launcher on the global hotkey.
+         Color tokens (Blink.*) are published at runtime by ThemeManager; shared chrome below. -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Shared.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

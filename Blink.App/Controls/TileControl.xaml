@@ -1,0 +1,31 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows. -->
+<UserControl x:Class="Blink.App.Controls.TileControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root">
+    <!-- Rounded square tile: tile fill + hairline + a faint top-left inner highlight,
+         with a centered glyph tinted by the item's category hue. -->
+    <Border Width="{Binding TileSize, ElementName=Root}"
+            Height="{Binding TileSize, ElementName=Root}"
+            CornerRadius="11"
+            Background="{DynamicResource Blink.Tile}"
+            BorderBrush="{DynamicResource Blink.TileLine}"
+            BorderThickness="1"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Border CornerRadius="11">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0.1,0" EndPoint="0.75,1">
+                        <GradientStop Color="#1AFFFFFF" Offset="0"/>
+                        <GradientStop Color="#00FFFFFF" Offset="0.6"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <TextBlock x:Name="GlyphText"
+                       Text="{Binding Glyph, ElementName=Root}"
+                       Foreground="{Binding GlyphBrush, ElementName=Root}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontWeight="SemiBold"/>
+        </Grid>
+    </Border>
+</UserControl>
