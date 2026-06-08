@@ -1,0 +1,121 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+     Direction A — "Classic": single scrollable result column. -->
+<UserControl x:Class="Blink.App.Views.ClassicView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:Blink.App.Controls">
+    <Grid>
+        <!-- Result list -->
+        <ListBox x:Name="List"
+                 Background="Transparent" BorderThickness="0" Padding="7"
+                 MaxHeight="460"
+                 ItemsSource="{Binding Results}"
+                 SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 SelectionChanged="List_SelectionChanged"
+                 HorizontalContentAlignment="Stretch"
+                 Visibility="{Binding HasResults, Converter={StaticResource Blink.BoolToVis}}">
+
+            <!-- Row container: row-sel fill + 3px left accent bar; hover selects. -->
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <EventSetter Event="MouseEnter" Handler="Row_MouseEnter"/>
+                    <EventSetter Event="PreviewMouseLeftButtonUp" Handler="Row_Click"/>
+                    <Setter Property="Margin" Value="0,1"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="RowBg" CornerRadius="12" Padding="14,9" Background="Transparent">
+                                    <Grid>
+                                        <Border x:Name="AccentBar" Width="3" CornerRadius="3"
+                                                HorizontalAlignment="Left" Margin="-10,3,0,3"
+                                                Background="{DynamicResource Blink.Accent}" Visibility="Collapsed">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="10" ShadowDepth="0"
+                                                                  Color="{DynamicResource Blink.AccentColor}" Opacity="0.9"/>
+                                            </Border.Effect>
+                                        </Border>
+                                        <ContentPresenter/>
+                                    </Grid>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource Blink.RowSel}"/>
+                                        <Setter TargetName="AccentBar" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+
+            <!-- Row content: [40 tile] [title + sub/snippet] [meta] -->
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ctrl:TileControl Grid.Column="0" TileSize="40" Margin="0,0,14,0"
+                                          Glyph="{Binding Glyph}" GlyphBrush="{Binding GlyphBrush}"
+                                          IsMono="{Binding GlyphIsMono}" VerticalAlignment="Center"/>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <!-- title + content badge -->
+                            <StackPanel Orientation="Horizontal">
+                                <ctrl:HighlightTextBlock SourceText="{Binding Title}" Query="{Binding Query}"
+                                                         FontFamily="{DynamicResource Blink.Sora}" FontSize="15"
+                                                         FontWeight="Medium" Foreground="{DynamicResource Blink.Txt}"
+                                                         TextTrimming="CharacterEllipsis"/>
+                                <Border Style="{StaticResource Blink.ContentBadge}" Margin="9,0,0,0"
+                                        Visibility="{Binding ContentHit, Converter={StaticResource Blink.BoolToVis}}">
+                                    <TextBlock Text="문서 내용 일치" FontFamily="{DynamicResource Blink.Mono}"
+                                               FontSize="10" Foreground="{DynamicResource Blink.Accent}"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- subtitle (path) OR snippet -->
+                            <TextBlock Margin="0,2,0,0" FontSize="12.5" Foreground="{DynamicResource Blink.TxtDim}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="{Binding Sub}"
+                                       Visibility="{Binding ShowSubtitle, Converter={StaticResource Blink.BoolToVis}}">
+                            </TextBlock>
+                            <TextBlock Margin="0,2,0,0" FontFamily="{DynamicResource Blink.Mono}" FontSize="12"
+                                       Foreground="{DynamicResource Blink.TxtFaint}" TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding ShowSnippet, Converter={StaticResource Blink.BoolToVis}}">
+                                <Run Text="{Binding SnippetPre, Mode=OneWay}"/><Run Text="{Binding SnippetHit, Mode=OneWay}" Background="{DynamicResource Blink.Mark}" Foreground="{DynamicResource Blink.Txt}"/><Run Text="{Binding SnippetPost, Mode=OneWay}"/>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- meta: size · type-tag · ↵ (selected only) -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Size}" Style="{StaticResource Blink.MonoFaint}" FontSize="11"
+                                       Margin="0,0,12,0"
+                                       Visibility="{Binding HasSize, Converter={StaticResource Blink.BoolToVis}}"/>
+                            <TextBlock Text="{Binding TypeLabel}" Style="{StaticResource Blink.TypeTag}" Margin="0,0,12,0"/>
+                            <Border Style="{StaticResource Blink.KbdBorder}"
+                                    Visibility="{Binding IsSelected, Converter={StaticResource Blink.BoolToVis}}">
+                                <TextBlock Text="↵" Style="{StaticResource Blink.KbdText}"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Empty state -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,38"
+                    Visibility="{Binding IsEmptyState, Converter={StaticResource Blink.BoolToVis}}">
+            <TextBlock Text="결과 없음" Style="{StaticResource Blink.TypeTag}" HorizontalAlignment="Center"/>
+            <TextBlock Margin="0,10,0,0" FontSize="14" Foreground="{DynamicResource Blink.TxtDim}"
+                       HorizontalAlignment="Center"
+                       Text="{Binding Query, StringFormat='&quot;{0}&quot; 에 일치하는 항목이 없습니다.'}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>
