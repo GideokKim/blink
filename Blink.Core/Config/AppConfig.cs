@@ -22,6 +22,18 @@ public sealed class AppConfig
     [JsonPropertyName("autostart")]
     public bool Autostart { get; set; }
 
+    /// <summary>Launcher layout: <c>"A"</c> (Classic, single column) or <c>"B"</c> (Dual Panel). Default A.</summary>
+    [JsonPropertyName("direction")]
+    public string Direction { get; set; } = "A";
+
+    /// <summary>Launcher theme: <c>"dark"</c> (default) or <c>"light"</c>.</summary>
+    [JsonPropertyName("theme")]
+    public string Theme { get; set; } = "dark";
+
+    /// <summary>Accent hue in the cool 220–280 range (fixed L 0.64 / C 0.155). Default 250.</summary>
+    [JsonPropertyName("accent_hue")]
+    public int AccentHue { get; set; } = 250;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
