@@ -1,4 +1,5 @@
 // Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+using System.IO;
 using Blink.Core.Indexing;
 using Blink.Core.Store;
 
