@@ -10,8 +10,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version without leading v (e.g. 1.2.3)'
+        description: 'Version without leading v (e.g. 1.2.3 or 0.0.1-test)'
         required: true
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # required to create the release and upload assets
@@ -39,9 +43,14 @@ jobs:
             $v = '${{ github.event.inputs.version }}'
           }
           if (-not $v) { throw 'Could not resolve a version' }
-          "version=$v" >> $env:GITHUB_OUTPUT
-          "tag=v$v"   >> $env:GITHUB_OUTPUT
-          Write-Host "Building version $v"
+          # Pre-release when the version carries a semver pre-release suffix (e.g. 0.0.1-test,
+          # 1.2.0-rc1, -beta, -alpha), or when the manual run requests it.
+          $pre = if ($v -match '-') { 'true' } else { 'false' }
+          if ('${{ github.event.inputs.prerelease }}' -eq 'true') { $pre = 'true' }
+          "version=$v"      >> $env:GITHUB_OUTPUT
+          "tag=v$v"         >> $env:GITHUB_OUTPUT
+          "prerelease=$pre" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version $v (prerelease=$pre)"
 
       - name: Test engine
         run: dotnet test Blink.Core.Tests -c Release
@@ -71,4 +80,5 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Blink ${{ steps.ver.outputs.tag }}
           generate_release_notes: true
+          prerelease: ${{ steps.ver.outputs.prerelease }}
           files: installer/Output/Blink-Setup-*.exe
