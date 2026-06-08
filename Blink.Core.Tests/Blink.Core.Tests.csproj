@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Blink.Core\Blink.Core.csproj" />
+    <!-- Built and copied to the test output so the worker-spawn integration test can launch it. -->
+    <ProjectReference Include="..\Blink.Indexer.Worker\Blink.Indexer.Worker.csproj" />
   </ItemGroup>
 
 </Project>

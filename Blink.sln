@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blink.Core.Tests", "Blink.C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blink.Cli", "Blink.Cli\Blink.Cli.csproj", "{71067FE3-4293-46EE-94AD-C2347A7F3CC0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blink.Indexer.Worker", "Blink.Indexer.Worker\Blink.Indexer.Worker.csproj", "{059F63FB-7C0D-4D60-876B-9096B2EEC113}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{71067FE3-4293-46EE-94AD-C2347A7F3CC0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{71067FE3-4293-46EE-94AD-C2347A7F3CC0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{71067FE3-4293-46EE-94AD-C2347A7F3CC0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{059F63FB-7C0D-4D60-876B-9096B2EEC113}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{059F63FB-7C0D-4D60-876B-9096B2EEC113}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{059F63FB-7C0D-4D60-876B-9096B2EEC113}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{059F63FB-7C0D-4D60-876B-9096B2EEC113}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
