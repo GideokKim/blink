@@ -97,8 +97,8 @@ Output: `Blink.App\bin\Release\net8.0-windows\win-x64\publish\Blink.App.exe`.
     /t REG_SZ /d "%LOCALAPPDATA%\Blink\Blink.App.exe" /f
   ```
 
-A proper installer (Inno Setup / MSIX) is out of scope for this slice (deferred — see
-the plan's Follow-up **F3**).
+A proper per-user installer (Inno Setup) now lives in **`installer/`** — it publishes the
+app + indexer worker and offers the autostart task. See `installer/README.md`.
 
 ---
 
