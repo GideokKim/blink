@@ -7,7 +7,10 @@
 ; autostart, Korean + English wizard. Ships the EDR-isolation worker exe alongside the app.
 
 #define AppName        "Blink"
-#define AppVersion     "0.1.0"
+; AppVersion can be overridden from the command line: iscc /DAppVersion=1.2.3 blink.iss
+#ifndef AppVersion
+  #define AppVersion   "0.1.0"
+#endif
 #define AppPublisher   "Blink"
 #define AppExeName     "Blink.App.exe"
 #define WorkerExeName  "Blink.Indexer.Worker.exe"

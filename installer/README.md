@@ -46,6 +46,23 @@ Output: `installer\Output\Blink-Setup-0.1.0.exe`.
   (same key the app's in-product autostart toggle uses; uninstall removes it).
 - Start-menu entry, optional desktop icon, launch-after-install.
 
+## Automated release (GitHub Actions)
+
+You don't have to build locally. Pushing a version tag runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) on a Windows runner,
+which tests the engine, publishes the app + worker, compiles this installer, and creates a
+GitHub Release with **auto-generated release notes** and the `Blink-Setup-<version>.exe`
+attached:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag version (without the leading `v`) is injected into the installer via
+`iscc /DAppVersion=...`. You can also trigger it manually from the **Actions** tab
+(*Release* → *Run workflow*) by entering a version.
+
 ## EDR note
 
 For locked-down environments, code-sign `Blink.Indexer.Worker.exe` (and the app) and
