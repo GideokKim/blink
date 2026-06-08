@@ -31,11 +31,20 @@ internal sealed class IndexingService : IDisposable
 
         return Task.Run(() =>
         {
+            var pruner = new Pruner();
             foreach (var folder in folderList)
             {
                 ct.ThrowIfCancellationRequested();
-                if (Directory.Exists(folder))
-                    _indexer.Index(folder, store, progress, ct);
+                if (!Directory.Exists(folder))
+                    continue;
+
+                _indexer.Index(folder, store, progress, ct);
+
+                // Remove entries for files deleted since the last run. Guarded against
+                // a vanished root (RootUnavailableException) so a transient mount drop
+                // can't purge the index.
+                try { pruner.Apply(folder, store); }
+                catch (RootUnavailableException) { /* skip prune for this root */ }
             }
             Completed?.Invoke();
         }, ct);
