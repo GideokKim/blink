@@ -8,7 +8,7 @@ public enum LauncherTheme { Dark, Light }
 
 /// <summary>
 /// Publishes the design tokens as application-level brush resources, recomputed from
-/// <c>styles.css</c>'s oklch values for the current theme, accent hue, and glass opacity.
+/// <c>styles.css</c>'s oklch values for the current theme and accent hue.
 /// Controls bind every color via <c>{DynamicResource Blink.*}</c>, so a theme/accent change
 /// is a single <see cref="Apply"/> call. Keys mirror the CSS custom properties.
 /// </summary>
@@ -37,13 +37,11 @@ internal static class ThemeManager
 
     public static LauncherTheme Current { get; private set; } = LauncherTheme.Dark;
     public static double AccentHue { get; private set; } = 250;
-    public static double GlassAlpha { get; private set; } = 0.45;
 
-    public static void Apply(LauncherTheme theme, double accentHue = 250, double glassAlpha = 0.45)
+    public static void Apply(LauncherTheme theme, double accentHue = 250)
     {
         Current = theme;
         AccentHue = accentHue;
-        GlassAlpha = glassAlpha;
 
         var r = Application.Current.Resources;
 
@@ -56,7 +54,7 @@ internal static class ThemeManager
 
         if (theme == LauncherTheme.Dark)
         {
-            r[BgGlass] = Oklch.ToBrush(0.20, 0.013, 255, glassAlpha);
+            r[BgGlass] = Oklch.ToBrush(0.20, 0.013, 255); // opaque solid panel
             r[BgGlass2] = Oklch.ToBrush(0.235, 0.014, 255, 0.55);
             r[Hairline] = Oklch.ToBrush(0.99, 0, 0, 0.09);
             r[HairlineStrong] = Oklch.ToBrush(0.99, 0, 0, 0.14);
@@ -71,7 +69,7 @@ internal static class ThemeManager
         }
         else
         {
-            r[BgGlass] = Oklch.ToBrush(0.985, 0.003, 255, Math.Min(0.97, glassAlpha + 0.12));
+            r[BgGlass] = Oklch.ToBrush(0.985, 0.003, 255); // opaque solid panel
             r[BgGlass2] = Oklch.ToBrush(0.96, 0.004, 255, 0.60);
             r[Hairline] = Oklch.ToBrush(0.20, 0.02, 255, 0.10);
             r[HairlineStrong] = Oklch.ToBrush(0.20, 0.02, 255, 0.16);
@@ -87,7 +85,7 @@ internal static class ThemeManager
     }
 
     public static void Toggle() =>
-        Apply(Current == LauncherTheme.Dark ? LauncherTheme.Light : LauncherTheme.Dark, AccentHue, GlassAlpha);
+        Apply(Current == LauncherTheme.Dark ? LauncherTheme.Light : LauncherTheme.Dark, AccentHue);
 
     /// <summary>The per-category tile glyph tint: <c>oklch(0.8 0.09 hue)</c>.</summary>
     public static SolidColorBrush TileGlyph(int hue) => Oklch.ToBrush(0.8, 0.09, hue);

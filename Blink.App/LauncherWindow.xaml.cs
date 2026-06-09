@@ -60,14 +60,6 @@ public partial class LauncherWindow : Window
         UpdateChrome();
     }
 
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-        var hwnd = new WindowInteropHelper(this).Handle;
-        // Acrylic blur-behind + rounded corners (best effort; the translucent glass panel is the fallback).
-        AcrylicHelper.TryApply(hwnd, (int)ActualWidth, (int)ActualHeight, 20);
-    }
-
     // ── Direction & theme (settings) ──────────────────────────────────────────
     public void SetDirection(LauncherDirection direction)
     {
