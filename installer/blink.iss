@@ -26,6 +26,7 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#AppExeName}
+SetupIconFile=..\Blink.App\blink.ico
 OutputDir=Output
 OutputBaseFilename=Blink-Setup-{#AppVersion}
 Compression=lzma2
