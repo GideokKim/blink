@@ -75,6 +75,56 @@ public sealed class RichParserTests : IDisposable
         Assert.Contains("Acme전자", text);
     }
 
+    // ---- XLSX cell/row caps (partial-body truncation on cell-explosion) ----
+    [Fact]
+    public void Xlsx_CellCap_StopsAfterMaxCells()
+    {
+        // One row, 10 inline cells v0..v9. cap=5 → append-then-check (++cells >= max):
+        // v0..v4 included (5 cells), v5 onward dropped.
+        var path = NewXlsx(new[] { new[] { "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9" } });
+        var text = new XlsxParser().ExtractText(path, maxCells: 5, maxRows: 10_000);
+        Assert.Contains("v4", text);
+        Assert.DoesNotContain("v5", text);
+    }
+
+    [Fact]
+    public void Xlsx_RowCap_StopsAfterMaxRows()
+    {
+        // 5 single-cell rows r0..r4. cap=2 → ++rows > max: r0,r1 processed, r2 stops the walk.
+        var path = NewXlsx(new[]
+        {
+            new[] { "r0" }, new[] { "r1" }, new[] { "r2" }, new[] { "r3" }, new[] { "r4" },
+        });
+        var text = new XlsxParser().ExtractText(path, maxCells: 100_000, maxRows: 2);
+        Assert.Contains("r1", text);
+        Assert.DoesNotContain("r2", text);
+    }
+
+    /// <summary>Builds a one-sheet workbook from inline-string rows (disposed before returning).</summary>
+    private string NewXlsx(string[][] rows)
+    {
+        var path = Temp(".xlsx");
+        using (var doc = SpreadsheetDocument.Create(path, SpreadsheetDocumentType.Workbook))
+        {
+            var wbPart = doc.AddWorkbookPart();
+            wbPart.Workbook = new Workbook();
+            var wsPart = wbPart.AddNewPart<WorksheetPart>();
+            var sheetData = new SheetData();
+            foreach (var cells in rows)
+            {
+                var row = new Row();
+                foreach (var v in cells)
+                    row.Append(new Cell { DataType = CellValues.InlineString, InlineString = new InlineString(new Text(v)) });
+                sheetData.Append(row);
+            }
+            wsPart.Worksheet = new Worksheet(sheetData);
+            var sheets = wbPart.Workbook.AppendChild(new Sheets());
+            sheets.Append(new Sheet { Id = wbPart.GetIdOfPart(wsPart), SheetId = 1, Name = "Sheet1" });
+            wbPart.Workbook.Save();
+        }
+        return path;
+    }
+
     // ---- DOCX ----
     [Fact]
     public void Docx_ExtractsParagraphText()
