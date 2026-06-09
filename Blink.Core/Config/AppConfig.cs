@@ -34,6 +34,13 @@ public sealed class AppConfig
     [JsonPropertyName("accent_hue")]
     public int AccentHue { get; set; } = 250;
 
+    /// <summary>
+    /// Auto-index cadence key: <c>"15m"</c>, <c>"1h"</c> (default), <c>"6h"</c>, or <c>"off"</c> (manual only).
+    /// Mapped to a real period by <see cref="Blink.Core.Indexing.AutoIndexInterval"/>.
+    /// </summary>
+    [JsonPropertyName("auto_index_interval")]
+    public string AutoIndexInterval { get; set; } = Indexing.AutoIndexInterval.Default;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

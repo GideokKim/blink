@@ -30,6 +30,12 @@ internal static class ThemeManager
     public const string Tile = "Blink.Tile";
     public const string TileLine = "Blink.TileLine";
     public const string Mark = "Blink.Mark";
+    // Settings-window surfaces (opaque window, unlike the launcher's glass). Shared so both
+    // windows theme from one place. Match settings/Blink Settings.html tokens.
+    public const string Surface = "Blink.Surface";    // opaque window body
+    public const string Surface2 = "Blink.Surface2";  // footer fill
+    public const string Inset = "Blink.Inset";        // lists / fields / inset controls
+    public const string Titlebar = "Blink.Titlebar";  // custom title bar fill
 
     // Accent is fixed lightness/chroma; only hue varies (cool 220–280).
     private const double AccentL = 0.64;
@@ -66,6 +72,10 @@ internal static class ThemeManager
             r[Tile] = Oklch.ToBrush(0.30, 0.012, 255, 0.70);
             r[TileLine] = Oklch.ToBrush(0.99, 0, 0, 0.10);
             r[Mark] = Oklch.ToBrush(AccentL, AccentC, accentHue, 0.30);
+            r[Surface] = Rgb(0x15, 0x18, 0x1F);
+            r[Surface2] = Oklch.ToBrush(0.22, 0.012, 255, 0.5);
+            r[Inset] = Oklch.ToBrush(0.16, 0.01, 255, 0.6);
+            r[Titlebar] = Oklch.ToBrush(0.18, 0.011, 255, 0.85);
         }
         else
         {
@@ -81,11 +91,46 @@ internal static class ThemeManager
             r[Tile] = Oklch.ToBrush(1, 0, 0, 0.75);
             r[TileLine] = Oklch.ToBrush(0.20, 0.02, 255, 0.10);
             r[Mark] = Oklch.ToBrush(AccentL, AccentC, accentHue, 0.22);
+            r[Surface] = Rgb(0xF6, 0xF7, 0xFA);
+            r[Surface2] = Oklch.ToBrush(0.97, 0.003, 255, 0.7);
+            r[Inset] = Oklch.ToBrush(1, 0, 0, 0.6);
+            r[Titlebar] = Oklch.ToBrush(0.99, 0.002, 255, 0.9);
         }
+    }
+
+    /// <summary>Opaque brush from sRGB bytes (for the design's hex surface tokens).</summary>
+    private static SolidColorBrush Rgb(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
     }
 
     public static void Toggle() =>
         Apply(Current == LauncherTheme.Dark ? LauncherTheme.Light : LauncherTheme.Dark, AccentHue);
+
+    /// <summary>
+    /// Resolve a stored theme preference (<c>"dark"</c>/<c>"light"</c>/<c>"system"</c>) to a concrete
+    /// theme. <c>"system"</c> (or anything unknown) follows the Windows apps theme.
+    /// </summary>
+    public static LauncherTheme Resolve(string? theme)
+    {
+        if (string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase)) return LauncherTheme.Light;
+        if (string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase)) return LauncherTheme.Dark;
+        return OsPrefersLight() ? LauncherTheme.Light : LauncherTheme.Dark;
+    }
+
+    /// <summary>Reads the Windows "apps use light theme" preference; false (dark) if unavailable.</summary>
+    private static bool OsPrefersLight()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is int v && v != 0;
+        }
+        catch { return false; }
+    }
 
     /// <summary>The per-category tile glyph tint: <c>oklch(0.8 0.09 hue)</c>.</summary>
     public static SolidColorBrush TileGlyph(int hue) => Oklch.ToBrush(0.8, 0.09, hue);

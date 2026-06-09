@@ -4,6 +4,7 @@ using Blink.App.Interop;
 using Blink.App.Theming;
 using Blink.App.ViewModels;
 using Blink.Core.Config;
+using Blink.Core.Indexing;
 using Blink.Core.Launch;
 using Blink.Core.Search;
 using Blink.Core.Store;
@@ -18,6 +19,7 @@ public partial class App : Application
     private SqliteFtsStore? _store;
     private LauncherWindow? _launcher;
     private IndexingService? _indexing;
+    private AutoIndexScheduler? _autoIndex;
     private Forms.NotifyIcon? _tray;
     private AppConfig _config = new();
     private readonly IndexingStatusViewModel _status = new();
@@ -56,6 +58,16 @@ public partial class App : Application
 
         SetupTray();
 
+        // Background auto-reindex on the configured cadence ("수동" disables it). Marshal the
+        // tick onto the UI thread; StartReindex touches UI-affine state.
+        _autoIndex = new AutoIndexScheduler(() =>
+            Dispatcher.Invoke(() =>
+            {
+                if (_config.Folders.Length > 0)
+                    StartReindex(_config.Folders);
+            }));
+        _autoIndex.Configure(_config.AutoIndexInterval);
+
         if (_config.Folders.Length > 0)
             StartReindex(_config.Folders);
     }
@@ -76,8 +88,7 @@ public partial class App : Application
             _launcher?.SetIndexMode(count); // flip to real results once the index is populated
         });
 
-    private static LauncherTheme ThemeOf(AppConfig c) =>
-        string.Equals(c.Theme, "light", StringComparison.OrdinalIgnoreCase) ? LauncherTheme.Light : LauncherTheme.Dark;
+    private static LauncherTheme ThemeOf(AppConfig c) => ThemeManager.Resolve(c.Theme);
 
     private static LauncherDirection DirectionOf(AppConfig c) =>
         string.Equals(c.Direction, "B", StringComparison.OrdinalIgnoreCase) ? LauncherDirection.Split : LauncherDirection.Classic;
@@ -141,14 +152,25 @@ public partial class App : Application
     {
         var win = new SettingsWindow(_config, _status);
         win.ReindexRequested += folders => StartReindex(folders);
+        win.SettingsSaved += OnSettingsSaved;
         win.Show();
         win.Activate();
+    }
+
+    /// <summary>Apply settings the user just saved: re-arm the auto-index cadence, sync layout, sync the tray.</summary>
+    private void OnSettingsSaved()
+    {
+        _autoIndex?.Configure(_config.AutoIndexInterval);
+        _launcher?.SetDirection(DirectionOf(_config));
+        ThemeManager.Apply(ThemeOf(_config), _config.AccentHue);
+        _dirSync?.Invoke();
     }
 
     private void QuitApp()
     {
         _tray?.Dispose();
         _hotkey?.Dispose();
+        _autoIndex?.Dispose();
         _indexing?.Dispose();
         _store?.Dispose();
         Shutdown();

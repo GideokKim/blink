@@ -40,6 +40,19 @@ public sealed class AppConfigTests : IDisposable
     }
 
     [Fact]
+    public void AutoIndexInterval_DefaultsToHourly()
+    {
+        Assert.Equal("1h", AppConfig.Load(_dir).AutoIndexInterval);
+    }
+
+    [Fact]
+    public void AutoIndexInterval_RoundTrips()
+    {
+        new AppConfig { AutoIndexInterval = "15m" }.Save(_dir);
+        Assert.Equal("15m", AppConfig.Load(_dir).AutoIndexInterval);
+    }
+
+    [Fact]
     public void Save_CreatesDirectory()
     {
         var nested = Path.Combine(_dir, "nested");
