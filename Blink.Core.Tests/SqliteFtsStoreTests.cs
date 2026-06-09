@@ -18,6 +18,14 @@ public sealed class SqliteFtsStoreTests : IDisposable
     private static Document Doc(string docId, string content) =>
         new(DocId: docId, Path: docId, Mtime: 0, Size: content.Length, Content: content);
 
+    /// <summary>
+    /// A fresh OS-absolute directory path (not created on disk). Used as a FolderStats root so
+    /// stored doc_ids survive <see cref="Path.GetFullPath"/> on every platform — a literal
+    /// "/root" would become "C:\\root" on Windows and never match the stored ids.
+    /// </summary>
+    private static string FreshRoot(string tag) =>
+        Path.GetFullPath(Path.Combine(Path.GetTempPath(), $"blink-{tag}-{Guid.NewGuid():N}"));
+
     // ---- The mandatory Hangul round-trip correctness gate (written FIRST) ----
     [Fact]
     public void HangulRoundTrip_TwoGramAndMultiGramQueriesHit()
@@ -164,11 +172,14 @@ public sealed class SqliteFtsStoreTests : IDisposable
     public void FolderStats_MultipleFilesInNestedSubfolders_ReturnsSummedCountAndBytes()
     {
         using var store = NewStore();
-        // /root/a.txt size 100, /root/sub/b.txt size 200 → FileCount=2, TotalBytes=300
-        store.Upsert(new Document(DocId: "/root/a.txt",     Path: "/root/a.txt",     Mtime: 0, Size: 100, Content: "a"));
-        store.Upsert(new Document(DocId: "/root/sub/b.txt", Path: "/root/sub/b.txt", Mtime: 0, Size: 200, Content: "b"));
+        // a.txt size 100, sub/b.txt size 200 → FileCount=2, TotalBytes=300
+        var root = FreshRoot("fs");
+        var a = Path.Combine(root, "a.txt");
+        var b = Path.Combine(root, "sub", "b.txt");
+        store.Upsert(new Document(DocId: a, Path: a, Mtime: 0, Size: 100, Content: "a"));
+        store.Upsert(new Document(DocId: b, Path: b, Mtime: 0, Size: 200, Content: "b"));
 
-        var (count, bytes) = store.FolderStats("/root");
+        var (count, bytes) = store.FolderStats(root);
         Assert.Equal(2L, count);
         Assert.Equal(300L, bytes);
     }
@@ -177,11 +188,13 @@ public sealed class SqliteFtsStoreTests : IDisposable
     public void FolderStats_BundleRow_ContributesMemberCountToFileCount()
     {
         using var store = NewStore();
-        // A bundle row under /root: IsBundle=true, MemberCount=5, Size=500
-        store.Upsert(new Document(DocId: "/root/__bundle__.jpg", Path: "/root/__bundle__.jpg",
+        // A bundle row under root: IsBundle=true, MemberCount=5, Size=500
+        var root = FreshRoot("fs");
+        var bundle = Path.Combine(root, "__bundle__.jpg");
+        store.Upsert(new Document(DocId: bundle, Path: bundle,
             Mtime: 0, Size: 500, Content: "", IsBundle: true, MemberCount: 5));
 
-        var (count, bytes) = store.FolderStats("/root");
+        var (count, bytes) = store.FolderStats(root);
         Assert.Equal(5L, count);
         Assert.Equal(500L, bytes);
     }
@@ -190,10 +203,14 @@ public sealed class SqliteFtsStoreTests : IDisposable
     public void FolderStats_DocumentNotUnderRoot_IsExcluded()
     {
         using var store = NewStore();
-        store.Upsert(new Document(DocId: "/root/a.txt",  Path: "/root/a.txt",  Mtime: 0, Size: 100, Content: "a"));
-        store.Upsert(new Document(DocId: "/other/b.txt", Path: "/other/b.txt", Mtime: 0, Size: 999, Content: "b"));
+        var root = FreshRoot("fs");
+        var other = FreshRoot("other");
+        var a = Path.Combine(root, "a.txt");
+        var b = Path.Combine(other, "b.txt");
+        store.Upsert(new Document(DocId: a, Path: a, Mtime: 0, Size: 100, Content: "a"));
+        store.Upsert(new Document(DocId: b, Path: b, Mtime: 0, Size: 999, Content: "b"));
 
-        var (count, bytes) = store.FolderStats("/root");
+        var (count, bytes) = store.FolderStats(root);
         Assert.Equal(1L, count);
         Assert.Equal(100L, bytes);
     }
@@ -202,9 +219,12 @@ public sealed class SqliteFtsStoreTests : IDisposable
     public void FolderStats_EmptyRoot_ReturnsZeros()
     {
         using var store = NewStore();
-        store.Upsert(new Document(DocId: "/other/a.txt", Path: "/other/a.txt", Mtime: 0, Size: 50, Content: "x"));
+        var root = FreshRoot("fs");
+        var other = FreshRoot("other");
+        var a = Path.Combine(other, "a.txt");
+        store.Upsert(new Document(DocId: a, Path: a, Mtime: 0, Size: 50, Content: "x"));
 
-        var (count, bytes) = store.FolderStats("/root");
+        var (count, bytes) = store.FolderStats(root);
         Assert.Equal(0L, count);
         Assert.Equal(0L, bytes);
     }
