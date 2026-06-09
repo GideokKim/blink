@@ -160,6 +160,55 @@ public sealed class SqliteFtsStoreTests : IDisposable
         Assert.True(store.Count() >= 1);
     }
 
+    [Fact]
+    public void FolderStats_MultipleFilesInNestedSubfolders_ReturnsSummedCountAndBytes()
+    {
+        using var store = NewStore();
+        // /root/a.txt size 100, /root/sub/b.txt size 200 → FileCount=2, TotalBytes=300
+        store.Upsert(new Document(DocId: "/root/a.txt",     Path: "/root/a.txt",     Mtime: 0, Size: 100, Content: "a"));
+        store.Upsert(new Document(DocId: "/root/sub/b.txt", Path: "/root/sub/b.txt", Mtime: 0, Size: 200, Content: "b"));
+
+        var (count, bytes) = store.FolderStats("/root");
+        Assert.Equal(2L, count);
+        Assert.Equal(300L, bytes);
+    }
+
+    [Fact]
+    public void FolderStats_BundleRow_ContributesMemberCountToFileCount()
+    {
+        using var store = NewStore();
+        // A bundle row under /root: IsBundle=true, MemberCount=5, Size=500
+        store.Upsert(new Document(DocId: "/root/__bundle__.jpg", Path: "/root/__bundle__.jpg",
+            Mtime: 0, Size: 500, Content: "", IsBundle: true, MemberCount: 5));
+
+        var (count, bytes) = store.FolderStats("/root");
+        Assert.Equal(5L, count);
+        Assert.Equal(500L, bytes);
+    }
+
+    [Fact]
+    public void FolderStats_DocumentNotUnderRoot_IsExcluded()
+    {
+        using var store = NewStore();
+        store.Upsert(new Document(DocId: "/root/a.txt",  Path: "/root/a.txt",  Mtime: 0, Size: 100, Content: "a"));
+        store.Upsert(new Document(DocId: "/other/b.txt", Path: "/other/b.txt", Mtime: 0, Size: 999, Content: "b"));
+
+        var (count, bytes) = store.FolderStats("/root");
+        Assert.Equal(1L, count);
+        Assert.Equal(100L, bytes);
+    }
+
+    [Fact]
+    public void FolderStats_EmptyRoot_ReturnsZeros()
+    {
+        using var store = NewStore();
+        store.Upsert(new Document(DocId: "/other/a.txt", Path: "/other/a.txt", Mtime: 0, Size: 50, Content: "x"));
+
+        var (count, bytes) = store.FolderStats("/root");
+        Assert.Equal(0L, count);
+        Assert.Equal(0L, bytes);
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

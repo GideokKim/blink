@@ -50,6 +50,9 @@ public sealed class JsonlEmitStore : IIndexStore
 
     public int Count() => throw new NotSupportedException("JsonlEmitStore is write-only (worker emit).");
 
+    public (long FileCount, long TotalBytes) FolderStats(string root)
+        => throw new NotSupportedException("JsonlEmitStore is write-only (worker emit).");
+
     public void Dispose() => _out.Flush();
 
     private void WriteLine(WireOp op) => _out.WriteLine(JsonSerializer.Serialize(op, WorkerProtocol.Json));

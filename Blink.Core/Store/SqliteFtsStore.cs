@@ -283,6 +283,24 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         }
     }
 
+    public (long FileCount, long TotalBytes) FolderStats(string root)
+    {
+        var prefix = Path.GetFullPath(root);
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT COALESCE(SUM(CASE WHEN is_bundle=1 THEN member_count ELSE 1 END),0), COALESCE(SUM(size),0) " +
+                "FROM documents WHERE doc_id=$p OR doc_id LIKE $like;";
+            cmd.Parameters.AddWithValue("$p", prefix);
+            cmd.Parameters.AddWithValue("$like", prefix.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "%");
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+                return (reader.GetInt64(0), reader.GetInt64(1));
+            return (0L, 0L);
+        }
+    }
+
     /// <summary>
     /// Returns the stored content for a doc_id, or null if absent. Used by
     /// <c>InProcessProvider.GetMatchLines</c> for inline match-line extraction.

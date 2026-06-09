@@ -18,10 +18,13 @@ namespace Blink.App;
 public partial class SettingsWindow : Window
 {
     private readonly AppConfig _config;
+    private readonly Func<string, (long count, long bytes)>? _statsProvider;
     private readonly ObservableCollection<FolderRow> _folders;
     private readonly ObservableCollection<IntervalOptionVm> _intervals;
     private string _selectedInterval;
-    private string _selectedTheme;
+    private string _selectedThemeMode;
+    private string _selectedBaseColor;
+    private string _selectedAccent;
 
     /// <summary>Raised when the user requests a re-index with the current folder set.</summary>
     public event Action<IReadOnlyList<string>>? ReindexRequested;
@@ -29,15 +32,17 @@ public partial class SettingsWindow : Window
     /// <summary>Raised after the user saves, so the app can re-arm the auto-index cadence and sync UI.</summary>
     public event Action? SettingsSaved;
 
-    public SettingsWindow(AppConfig config, IndexingStatusViewModel status)
+    public SettingsWindow(AppConfig config, IndexingStatusViewModel status,
+        Func<string, (long count, long bytes)>? statsProvider = null)
     {
         InitializeComponent();
         _config = config;
+        _statsProvider = statsProvider;
 
         // Live indexing status drives the status line + progress bar bindings.
         DataContext = status;
 
-        _folders = new ObservableCollection<FolderRow>(config.Folders.Select(f => new FolderRow(f)));
+        _folders = new ObservableCollection<FolderRow>(config.Folders.Select(MakeFolderRow));
         FoldersList.ItemsSource = _folders;
         _folders.CollectionChanged += (_, _) => UpdateEmpty();
         UpdateEmpty();
@@ -54,15 +59,35 @@ public partial class SettingsWindow : Window
         IntervalOptions.ItemsSource = _intervals;
         SyncIntervalButton();
 
-        // Theme segmented control — select the saved preference (triggers Theme_Checked once).
-        _selectedTheme = NormalizeTheme(config.Theme);
-        (_selectedTheme switch { "light" => ThemeLight, "system" => ThemeSystem, _ => ThemeDark }).IsChecked = true;
+        // Theme picker (value-based base color + 시스템 chip).
+        _selectedThemeMode = config.ThemeMode;
+        _selectedBaseColor = config.BaseColor;
+        _selectedAccent = config.Accent;
+        ThemePicker.Presets = new[] { "#0B0D12", "#14161C", "#0A0C18", "#F6F7FA", "#E9ECF2" };
+        if (string.Equals(config.ThemeMode, "system", StringComparison.OrdinalIgnoreCase))
+            ThemePicker.SetSystem();
+        else
+            ThemePicker.SelectedHex = config.BaseColor;
+        ThemePicker.ColorChanged += OnThemePickerChanged;
+
+        // Accent picker (value-based accent hex; no 시스템 chip).
+        AccentPicker.Presets = new[] { "#3B7FE3", "#4F46E5", "#06B6D4", "#14B8A6", "#F43F5E" };
+        AccentPicker.SelectedHex = config.Accent;
+        AccentPicker.ColorChanged += OnAccentPickerChanged;
     }
 
-    private static string NormalizeTheme(string? t) =>
-        string.Equals(t, "light", StringComparison.OrdinalIgnoreCase) ? "light"
-        : string.Equals(t, "system", StringComparison.OrdinalIgnoreCase) ? "system"
-        : "dark";
+    /// <summary>Build a folder row enriched with stats + last-indexed time from config.</summary>
+    private FolderRow MakeFolderRow(string path)
+    {
+        DateTime? lastUtc = null;
+        if (_config.FolderIndexTimes.TryGetValue(path, out var iso) &&
+            DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+        {
+            lastUtc = parsed;
+        }
+        (long count, long bytes)? stats = _statsProvider?.Invoke(path);
+        return new FolderRow(path, stats, lastUtc);
+    }
 
     private void UpdateEmpty() =>
         EmptyHint.Visibility = _folders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -88,7 +113,7 @@ public partial class SettingsWindow : Window
             !string.IsNullOrWhiteSpace(dlg.SelectedPath) &&
             !_folders.Any(f => string.Equals(f.Path, dlg.SelectedPath, StringComparison.OrdinalIgnoreCase)))
         {
-            _folders.Add(new FolderRow(dlg.SelectedPath));
+            _folders.Add(new FolderRow(dlg.SelectedPath, null, null)); // never indexed → "대기 중…"
         }
     }
 
@@ -125,14 +150,20 @@ public partial class SettingsWindow : Window
         IntervalPulse.Visibility = opt.Period is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    // ── Theme ─────────────────────────────────────────────────────────────────
-    private void Theme_Checked(object sender, RoutedEventArgs e)
+    // ── Theme / accent pickers ────────────────────────────────────────────────
+    private void OnThemePickerChanged()
     {
-        if (sender is not RadioButton { Tag: string theme }) return;
-        _selectedTheme = theme;
-        // Live-swap: ThemeManager publishes to app resources, so the launcher (DynamicResource) and
-        // this window both update immediately.
-        ThemeManager.Apply(ThemeManager.Resolve(theme), _config.AccentHue);
+        _selectedThemeMode = ThemePicker.IsSystem ? "system" : "value";
+        _selectedBaseColor = ThemePicker.SelectedHex;
+        // Live-apply: ThemeManager publishes to app resources, so the launcher (DynamicResource)
+        // and this window both update immediately.
+        ThemeManager.Apply(_selectedThemeMode, _selectedBaseColor, _selectedAccent);
+    }
+
+    private void OnAccentPickerChanged()
+    {
+        _selectedAccent = AccentPicker.SelectedHex;
+        ThemeManager.Apply(_selectedThemeMode, _selectedBaseColor, _selectedAccent);
     }
 
     // ── Database path ─────────────────────────────────────────────────────────
@@ -165,7 +196,9 @@ public partial class SettingsWindow : Window
         _config.Folders = _folders.Select(f => f.Path).ToArray();
         _config.Autostart = AutostartToggle.IsChecked == true;
         _config.AutoIndexInterval = _selectedInterval;
-        _config.Theme = _selectedTheme;
+        _config.ThemeMode = _selectedThemeMode;
+        _config.BaseColor = _selectedBaseColor;
+        _config.Accent = _selectedAccent;
         AutostartManager.Apply(_config.Autostart);
         _config.Save();
 
@@ -186,15 +219,18 @@ public partial class SettingsWindow : Window
     }
 }
 
-/// <summary>A folder row: the full path split into a dimmed parent segment + leaf for display.</summary>
+/// <summary>
+/// A folder row: the full path split into a dimmed parent segment + leaf, plus an index-stats
+/// subtitle ("{n} 파일 · {size} · 마지막 인덱싱 {상대시각}" or "대기 중…" when never indexed).
+/// </summary>
 public sealed class FolderRow
 {
     public string Path { get; }
     public string ParentSeg { get; }
     public string Leaf { get; }
-    public string Sub => "검색 대상 폴더";
+    public string Sub { get; }
 
-    public FolderRow(string path)
+    public FolderRow(string path, (long count, long bytes)? stats, DateTime? lastIndexedUtc)
     {
         Path = path;
         var trimmed = path.TrimEnd('\\', '/');
@@ -209,6 +245,39 @@ public sealed class FolderRow
             ParentSeg = string.Empty;
             Leaf = trimmed;
         }
+
+        if (lastIndexedUtc is null || stats is null || stats.Value.count <= 0)
+        {
+            Sub = "대기 중…";
+        }
+        else
+        {
+            var (count, bytes) = stats.Value;
+            Sub = $"{count:N0} 파일 · {HumanSize(bytes)} · 마지막 인덱싱 {RelTime(lastIndexedUtc.Value)}";
+        }
+    }
+
+    /// <summary>Human-readable byte size (1024-based; 1 decimal for KB and up).</summary>
+    private static string HumanSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        double v = bytes / 1024.0;
+        if (v < 1024) return $"{v:0.0} KB";
+        v /= 1024.0;
+        if (v < 1024) return $"{v:0.0} MB";
+        v /= 1024.0;
+        return $"{v:0.0} GB";
+    }
+
+    /// <summary>Relative time in Korean: 방금 / N분 전 / N시간 전 / N일 전.</summary>
+    private static string RelTime(DateTime utc)
+    {
+        var span = DateTime.UtcNow - utc;
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        if (span.TotalMinutes < 1) return "방금";
+        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}분 전";
+        if (span.TotalDays < 1) return $"{(int)span.TotalHours}시간 전";
+        return $"{(int)span.TotalDays}일 전";
     }
 }
 

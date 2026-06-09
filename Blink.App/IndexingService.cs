@@ -17,6 +17,9 @@ internal sealed class IndexingService : IDisposable
     public event Action<IndexProgress>? ProgressChanged;
     public event Action? Completed;
 
+    /// <summary>Fired (on the background thread) after a folder is fully indexed + pruned.</summary>
+    public event Action<string>? FolderCompleted;
+
     /// <summary>Re-index all configured folders into <paramref name="store"/> off the UI thread.</summary>
     public Task ReindexAsync(IEnumerable<string> folders, IIndexStore store)
     {
@@ -45,6 +48,8 @@ internal sealed class IndexingService : IDisposable
                 // can't purge the index.
                 try { pruner.Apply(folder, store); }
                 catch (RootUnavailableException) { /* skip prune for this root */ }
+
+                FolderCompleted?.Invoke(folder);
             }
             Completed?.Invoke();
         }, ct);

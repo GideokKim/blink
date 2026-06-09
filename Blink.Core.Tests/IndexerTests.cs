@@ -187,6 +187,7 @@ public sealed class IndexerTests : IDisposable
         public IEnumerable<(string DocId, double Mtime)> IterDocsUnder(string root) => _inner.IterDocsUnder(root);
         public IReadOnlyList<Blink.Core.Model.SearchHit> Search(string q, int limit = 50, int offset = 0) => _inner.Search(q, limit, offset);
         public int Count() => _inner.Count();
+        public (long FileCount, long TotalBytes) FolderStats(string root) => _inner.FolderStats(root);
         public void Dispose() { /* inner disposed by the test */ }
     }
 

@@ -23,6 +23,7 @@ public partial class App : Application
     private Forms.NotifyIcon? _tray;
     private AppConfig _config = new();
     private readonly IndexingStatusViewModel _status = new();
+    private readonly Dictionary<string, DateTime> _pendingFolderTimes = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -34,7 +35,7 @@ public partial class App : Application
         _config = AppConfig.Load();
 
         // Theme tokens must be published before any launcher control is created.
-        ThemeManager.Apply(ThemeOf(_config), _config.AccentHue);
+        ThemeManager.Apply(_config.ThemeMode, _config.BaseColor, _config.Accent);
 
         // Production content index + GUI search facade. Built before the launcher so the real
         // FTS provider can be injected and the initial demo/real mode decided up front.
@@ -52,6 +53,8 @@ public partial class App : Application
         _indexing = new IndexingService();
         _indexing.ProgressChanged += p => _status.Report(p);          // UI thread (Progress<T>)
         _indexing.Completed += OnIndexingCompleted;                    // background thread → marshal
+        // FolderCompleted fires on the background thread; just record under lock.
+        _indexing.FolderCompleted += f => { lock (_pendingFolderTimes) _pendingFolderTimes[f] = DateTime.UtcNow; };
 
         _hotkey = new HotkeyHook();
         _hotkey.HotkeyPressed += () => _launcher!.Summon();
@@ -86,9 +89,19 @@ public partial class App : Application
             int count = _store?.Count() ?? 0;
             _status.Complete(count);
             _launcher?.SetIndexMode(count); // flip to real results once the index is populated
-        });
 
-    private static LauncherTheme ThemeOf(AppConfig c) => ThemeManager.Resolve(c.Theme);
+            // Flush the per-folder completion timestamps accumulated during this run.
+            lock (_pendingFolderTimes)
+            {
+                if (_pendingFolderTimes.Count > 0)
+                {
+                    foreach (var (path, dt) in _pendingFolderTimes)
+                        _config.FolderIndexTimes[path] = dt.ToString("o");
+                    _pendingFolderTimes.Clear();
+                    _config.Save();
+                }
+            }
+        });
 
     private static LauncherDirection DirectionOf(AppConfig c) =>
         string.Equals(c.Direction, "B", StringComparison.OrdinalIgnoreCase) ? LauncherDirection.Split : LauncherDirection.Classic;
@@ -143,14 +156,17 @@ public partial class App : Application
 
     private void ToggleTheme()
     {
-        _launcher?.ToggleTheme();
-        _config.Theme = ThemeManager.Current == LauncherTheme.Light ? "light" : "dark";
+        _launcher?.ToggleTheme(); // ThemeManager.Toggle() flips the base preset, preserving accent
+        _config.ThemeMode = "value";
+        _config.BaseColor = ThemeManager.Current == LauncherTheme.Light ? "#F6F7FA" : "#0B0D12";
         _config.Save();
     }
 
     private void OpenSettings()
     {
-        var win = new SettingsWindow(_config, _status);
+        var win = new SettingsWindow(
+            _config, _status,
+            root => _store is null ? (0L, 0L) : _store.FolderStats(root));
         win.ReindexRequested += folders => StartReindex(folders);
         win.SettingsSaved += OnSettingsSaved;
         win.Show();
@@ -162,7 +178,7 @@ public partial class App : Application
     {
         _autoIndex?.Configure(_config.AutoIndexInterval);
         _launcher?.SetDirection(DirectionOf(_config));
-        ThemeManager.Apply(ThemeOf(_config), _config.AccentHue);
+        ThemeManager.Apply(_config.ThemeMode, _config.BaseColor, _config.Accent);
         _dirSync?.Invoke();
     }
 
