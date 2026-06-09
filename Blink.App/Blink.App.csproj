@@ -9,6 +9,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>Blink.App</RootNamespace>
     <AssemblyName>Blink.App</AssemblyName>
+    <!-- Embeds the Blink mark into Blink.App.exe (taskbar/Alt-Tab/Explorer/shortcuts/uninstall). -->
+    <ApplicationIcon>blink.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <!-- WinForms 타입은 'Forms.' alias로만 사용한다. 전역 using이 비접두 이름까지
@@ -18,6 +20,10 @@
          System.Windows.Media와 모호(CS0104)해진다. System.Drawing은 트레이 아이콘에서
          정규화 이름(System.Drawing.SystemIcons)으로만 사용한다. -->
     <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Embedded so the tray (NotifyIcon) and Settings window load it via pack:// at runtime. -->
+    <Resource Include="blink.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Blink.Core\Blink.Core.csproj" />

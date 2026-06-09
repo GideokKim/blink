@@ -84,9 +84,12 @@ public partial class App : Application
 
     private void SetupTray()
     {
+        var iconUri = new Uri("pack://application:,,,/blink.ico");
+        using var iconStream = Application.GetResourceStream(iconUri)!.Stream;
+
         _tray = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = new System.Drawing.Icon(iconStream),
             Visible = true,
             Text = "Blink",
         };

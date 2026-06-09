@@ -3,6 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Blink — Settings" Width="560" Height="420"
+        Icon="pack://application:,,,/blink.ico"
         WindowStartupLocation="CenterScreen" Background="#FFFFFF">
     <Grid Margin="16">
         <Grid.RowDefinitions>
