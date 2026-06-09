@@ -133,6 +133,9 @@ public sealed class Indexer
 
             var parser = ParserRegistry.GetParser(path);
             long size = SafeSize(path);
+            // Announce the file BEFORE the (potentially slow) extraction so the UI shows where it
+            // is actually stuck, not the previously-finished file.
+            progress?.Report(new IndexProgress(processed, total, path));
             string content = ShouldExtract(parser.ReadsContent, size, parser.MaxParseSize, MaxContentBytes)
                 ? SafeExtract(parser, path) : string.Empty;
 
