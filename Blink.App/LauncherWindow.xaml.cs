@@ -224,7 +224,7 @@ public partial class LauncherWindow : Window
             return;
         }
 
-        var path = sel.Path;
+        var path = sel.TargetPath;
         switch (action)
         {
             case "copy":

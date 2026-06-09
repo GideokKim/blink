@@ -62,7 +62,15 @@ public sealed class RowViewModel : ObservableObject
     public bool GlyphIsMono => Item.Glyph.Length > 2;
 
     // ── Direction B preview ────────────────────────────────────────────────
+    /// <summary>Display location (the containing folder), shown as the row/preview path.</summary>
     public string Path => Item.Sub;
+
+    /// <summary>
+    /// The action target — the actual file/folder path to open or reveal. This is the
+    /// document key (<see cref="LaunchItem.Id"/> = absolute path), NOT <see cref="Path"/>
+    /// (which is only the containing folder for display).
+    /// </summary>
+    public string TargetPath => Item.Id;
     public string KindLabel => LaunchTypes.Label(Item.Type);
     public string SizeOrDash => string.IsNullOrEmpty(Item.Size) ? "—" : Item.Size!;
     public string ModOrDash => string.IsNullOrEmpty(Item.Mod) ? "—" : Item.Mod!;
