@@ -183,7 +183,7 @@ public partial class LauncherWindow : Window
         }
     }
 
-    // ── Keyboard (↑/↓ wrap, Enter, Esc 1-clear/2-hide) ──────────────────────────
+    // ── Keyboard (↑/↓ wrap, Enter open, Shift+Enter reveal, Ctrl+C copy, Esc 1-clear/2-hide) ──
     private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
@@ -194,6 +194,15 @@ public partial class LauncherWindow : Window
                 bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
                 HandleAction(shift ? "parent" : "open");
                 e.Handled = true;
+                break;
+            case Key.C when (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control:
+                // Ctrl+C copies the selected result's path — but only when no text is
+                // selected in the box, so normal text-copy still works.
+                if (SearchBox.SelectionLength == 0)
+                {
+                    HandleAction("copy");
+                    e.Handled = true;
+                }
                 break;
             case Key.Escape:
                 if (SearchBox.Text.Length > 0)
