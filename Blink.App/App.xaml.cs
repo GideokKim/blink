@@ -5,6 +5,7 @@ using Blink.App.Theming;
 using Blink.App.ViewModels;
 using Blink.Core.Config;
 using Blink.Core.Launch;
+using Blink.Core.Search;
 using Blink.Core.Store;
 using Forms = System.Windows.Forms;
 
@@ -33,15 +34,19 @@ public partial class App : Application
         // Theme tokens must be published before any launcher control is created.
         ThemeManager.Apply(ThemeOf(_config), _config.AccentHue, 0.62);
 
-        // The launcher UI runs the ported launcher engine over an index. The demo index
-        // reproduces the design; production wiring (installed apps + Blink.Core file/content
-        // search) feeds real LaunchItems into the same view-model.
-        _launcher = new LauncherWindow(DemoIndex.Items, _status);
-        _launcher.SetDirection(DirectionOf(_config));
-
-        // Production content index. Indexing progress is surfaced live via _status to the
-        // launcher footer and the Settings window.
+        // Production content index + GUI search facade. Built before the launcher so the real
+        // FTS provider can be injected and the initial demo/real mode decided up front.
         _store = new SqliteFtsStore(_config.DbPath);
+        var provider = new InProcessProvider(_store);
+
+        // The launcher UI runs the ported launcher engine over an index. With an empty DB it
+        // shows the demo index (reproduces the design); once ≥1 doc is indexed it switches to
+        // real FTS results through the same view-model.
+        _launcher = new LauncherWindow(DemoIndex.Items, _status, provider);
+        _launcher.SetDirection(DirectionOf(_config));
+        _launcher.SetIndexMode(_store.Count());
+
+        // Indexing progress is surfaced live via _status to the launcher footer and Settings.
         _indexing = new IndexingService();
         _indexing.ProgressChanged += p => _status.Report(p);          // UI thread (Progress<T>)
         _indexing.Completed += OnIndexingCompleted;                    // background thread → marshal
@@ -64,7 +69,12 @@ public partial class App : Application
     }
 
     private void OnIndexingCompleted()
-        => Dispatcher.Invoke(() => _status.Complete(_store?.Count() ?? 0));
+        => Dispatcher.Invoke(() =>
+        {
+            int count = _store?.Count() ?? 0;
+            _status.Complete(count);
+            _launcher?.SetIndexMode(count); // flip to real results once the index is populated
+        });
 
     private static LauncherTheme ThemeOf(AppConfig c) =>
         string.Equals(c.Theme, "light", StringComparison.OrdinalIgnoreCase) ? LauncherTheme.Light : LauncherTheme.Dark;

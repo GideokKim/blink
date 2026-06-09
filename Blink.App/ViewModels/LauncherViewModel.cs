@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using Blink.App.Mvvm;
 using Blink.Core.Launch;
+using Blink.Core.Search;
 
 namespace Blink.App.ViewModels;
 
@@ -12,9 +13,28 @@ namespace Blink.App.ViewModels;
 /// </summary>
 public sealed class LauncherViewModel : ObservableObject
 {
+    private const int RealLimit = 50;
     private readonly IReadOnlyList<LaunchItem> _index;
+    private readonly ISearchProvider? _provider;
+    private bool _useRealIndex;
 
-    public LauncherViewModel(IReadOnlyList<LaunchItem> index) => _index = index;
+    public LauncherViewModel(IReadOnlyList<LaunchItem> index, ISearchProvider? provider = null)
+    {
+        _index = index;
+        _provider = provider;
+    }
+
+    /// <summary>
+    /// Switch between the demo index (empty DB) and real FTS results (≥1 indexed doc).
+    /// Re-runs the current query when the mode actually changes.
+    /// </summary>
+    public void SetIndexMode(int docCount)
+    {
+        bool real = docCount >= 1 && _provider is not null;
+        if (_useRealIndex == real) return;
+        _useRealIndex = real;
+        UpdateResults();
+    }
 
     public ObservableCollection<RowViewModel> Results { get; } = new();
 
@@ -72,8 +92,16 @@ public sealed class LauncherViewModel : ObservableObject
             if (calc is not null)
                 Results.Add(RowViewModel.ForCalc(calc));
 
-            foreach (var r in LaunchSearch.Search(q, _index))
-                Results.Add(new RowViewModel(r, q));
+            if (_useRealIndex && _provider is not null)
+            {
+                foreach (var hit in _provider.Search(q, RealLimit, 0))
+                    Results.Add(new RowViewModel(HitToLaunchItem.Convert(hit, q, _provider), q));
+            }
+            else
+            {
+                foreach (var r in LaunchSearch.Search(q, _index))
+                    Results.Add(new RowViewModel(r, q));
+            }
         }
 
         if (Results.Count > 0)
