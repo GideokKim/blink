@@ -1,48 +1,616 @@
-<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows. -->
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+     Redesigned Settings window matching blink_design_handoff/settings. Opaque surface,
+     custom chrome, shared Blink.* theme tokens (published by ThemeManager). -->
 <Window x:Class="Blink.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Blink — Settings" Width="560" Height="420"
+        Title="Blink — 설정"
+        Width="680" Height="760"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="CanMinimize"
+        WindowStartupLocation="CenterScreen"
         Icon="pack://application:,,,/blink.ico"
-        WindowStartupLocation="CenterScreen" Background="#FFFFFF">
-    <Grid Margin="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        FontFamily="{DynamicResource Blink.Sora}"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
 
-        <TextBlock Grid.Row="0" Text="Indexed folders" FontSize="16" Foreground="#111111" Margin="0,0,0,8"/>
+    <Window.Resources>
+        <!-- ── Pill buttons (tile / accent / primary / ghost) ───────────────────── -->
+        <Style x:Key="PillBtn" TargetType="Button">
+            <Setter Property="FontFamily" Value="{DynamicResource Blink.Sora}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
+            <Setter Property="Background" Value="{DynamicResource Blink.Tile}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Blink.TileLine}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="15,9"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border CornerRadius="10" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Border x:Name="hover" CornerRadius="9"
+                                        Background="{DynamicResource Blink.RowHover}" Opacity="0"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="hover" Property="Opacity" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value><TranslateTransform Y="1"/></Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PillBtnAccent" TargetType="Button" BasedOn="{StaticResource PillBtn}">
+            <Setter Property="Background" Value="{DynamicResource Blink.AccentSoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
+        </Style>
+        <Style x:Key="PillBtnPrimary" TargetType="Button" BasedOn="{StaticResource PillBtn}">
+            <Setter Property="Background" Value="{DynamicResource Blink.Accent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Blink.Accent}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+        <Style x:Key="PillBtnGhost" TargetType="Button" BasedOn="{StaticResource PillBtn}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Blink.HairlineStrong}"/>
+        </Style>
 
-        <ListBox x:Name="FoldersList" Grid.Row="1" Foreground="#111111"/>
+        <!-- ── Window caption buttons ───────────────────────────────────────────── -->
+        <Style x:Key="WinBtn" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource Blink.TxtDim}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" CornerRadius="8" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Blink.RowHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="WinBtnClose" TargetType="Button" BasedOn="{StaticResource WinBtn}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-            <Button Content="Add folder…" Width="110" Margin="0,0,8,0" Click="AddFolder_Click"/>
-            <Button Content="Remove" Width="90" Margin="0,0,8,0" Click="RemoveFolder_Click"/>
-            <Button Content="Re-index now" Width="110" Click="Reindex_Click"/>
-        </StackPanel>
+        <!-- ── Square icon button (db field) ────────────────────────────────────── -->
+        <Style x:Key="IconBtn" TargetType="Button">
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource Blink.TxtDim}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" CornerRadius="10"
+                                Background="{DynamicResource Blink.Tile}"
+                                BorderBrush="{DynamicResource Blink.TileLine}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Blink.RowHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-        <StackPanel Grid.Row="3" Margin="0,14,0,0">
-            <CheckBox x:Name="AutostartCheck" Content="Start Blink when I sign in to Windows"
-                      Foreground="#111111" Margin="0,0,0,10"/>
+        <!-- ── Folder-row remove (✕) ghost button ───────────────────────────────── -->
+        <Style x:Key="RemoveBtn" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource Blink.TxtFaint}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" CornerRadius="8" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#33E0524A"/>
+                                <Setter Property="Foreground" Value="#E0524A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-            <!-- Indexing progress (bound to the shared IndexingStatusViewModel) -->
-            <StackPanel x:Name="ProgressArea" Margin="0,0,0,10">
-                <ProgressBar x:Name="IndexProgressBar" Height="6" Minimum="0" Maximum="100"
-                             Value="{Binding Percent, Mode=OneWay}"
-                             Visibility="{Binding IsIndexing, Converter={StaticResource Blink.BoolToVis}}"/>
-                <TextBlock x:Name="IndexStatusText" Text="{Binding StatusText}"
-                           FontSize="11.5" Foreground="#666666" Margin="0,4,0,0"
-                           TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
+        <!-- ── iOS-style toggle ─────────────────────────────────────────────────── -->
+        <Style x:Key="IosToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="track" CornerRadius="13"
+                                Background="{DynamicResource Blink.Inset}"
+                                BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1">
+                            <Ellipse x:Name="knob" Width="20" Height="20" VerticalAlignment="Center"
+                                     HorizontalAlignment="Left" Margin="2,0,0,0"
+                                     Fill="{DynamicResource Blink.TxtDim}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="track" Property="Background" Value="{DynamicResource Blink.AccentSoft}"/>
+                                <Setter TargetName="track" Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
+                                <Setter TargetName="knob" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="knob" Property="Margin" Value="0,0,2,0"/>
+                                <Setter TargetName="knob" Property="Fill" Value="{DynamicResource Blink.Accent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-            <TextBlock Text="Database path" FontSize="12" Foreground="#666666"/>
-            <TextBox x:Name="DbPathText" IsReadOnly="True" Foreground="#111111" BorderThickness="1"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button Content="Save" Width="90" Margin="0,0,8,0" Click="Save_Click"/>
-                <Button Content="Close" Width="90" Click="Close_Click"/>
-            </StackPanel>
-        </StackPanel>
-    </Grid>
+        <!-- ── Segmented control buttons (theme) ────────────────────────────────── -->
+        <Style x:Key="SegRadio" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource Blink.TxtDim}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource Blink.Sora}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="b" CornerRadius="8" Padding="14,7" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Blink.RowHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Blink.AccentSoft}"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
+                                <Setter TargetName="b" Property="BorderThickness" Value="1"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ── Interval dropdown toggle (select-btn) ────────────────────────────── -->
+        <Style x:Key="SelectToggle" TargetType="ToggleButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinWidth" Value="150"/>
+            <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource Blink.Sora}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" CornerRadius="10" Padding="13,9"
+                                Background="{DynamicResource Blink.Inset}"
+                                BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- Outer margin leaves room for the window drop shadow. -->
+    <Border CornerRadius="16" Margin="20"
+            Background="{DynamicResource Blink.Surface}"
+            BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1"
+            TextElement.Foreground="{DynamicResource Blink.Txt}">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="60" ShadowDepth="14" Direction="270" Opacity="0.55" Color="#000000"/>
+        </Border.Effect>
+        <!-- Clip children to the rounded corners. -->
+        <Border CornerRadius="16" ClipToBounds="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- ── Title bar ─────────────────────────────────────────────────── -->
+                <Border Grid.Row="0" Height="46" Background="{DynamicResource Blink.Titlebar}"
+                        BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="0,0,0,1"
+                        MouseLeftButtonDown="TitleBar_MouseDown">
+                    <Grid Margin="16,0,8,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Image Grid.Column="0" Width="22" Height="22" VerticalAlignment="Center"
+                               Source="pack://application:,,,/blink.ico"/>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="11,0,0,0"
+                                   FontSize="13.5" FontWeight="SemiBold">
+                            <Run Text="Blink" Foreground="{DynamicResource Blink.Txt}"/><Run Text="  — 설정" Foreground="{DynamicResource Blink.TxtFaint}" FontWeight="Normal"/>
+                        </TextBlock>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal">
+                            <Button Style="{StaticResource WinBtn}" Click="Minimize_Click" ToolTip="최소화">
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M3,7 L11,7"/>
+                            </Button>
+                            <Button Style="{StaticResource WinBtn}" Click="Maximize_Click" ToolTip="최대화">
+                                <Border Width="9" Height="9" CornerRadius="1.5"
+                                        BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                        BorderThickness="1.3"/>
+                            </Button>
+                            <Button Style="{StaticResource WinBtnClose}" Click="Close_Click" ToolTip="닫기">
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.3" StrokeStartLineCap="Round"
+                                      Data="M4,4 L10,10 M10,4 L4,10"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ── Body ──────────────────────────────────────────────────────── -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0">
+                    <StackPanel Margin="28,26,28,22">
+
+                        <!-- Indexed folders -->
+                        <TextBlock Text="INDEX" FontFamily="{DynamicResource Blink.Mono}" FontSize="10.5"
+                                   Foreground="{DynamicResource Blink.Accent}" Margin="0,0,0,10"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                            <TextBlock Text="인덱싱 폴더" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Blink.Txt}"/>
+                            <TextBlock Text="이 폴더들의 파일명과 문서 내용이 검색됩니다" FontSize="12"
+                                       Foreground="{DynamicResource Blink.TxtFaint}" VerticalAlignment="Bottom"
+                                       Margin="10,0,0,1"/>
+                        </StackPanel>
+
+                        <Border Background="{DynamicResource Blink.Inset}"
+                                BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1" CornerRadius="13">
+                            <StackPanel>
+                                <ItemsControl x:Name="FoldersList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="15,13" BorderBrush="{DynamicResource Blink.Hairline}"
+                                                    BorderThickness="0,1,0,0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Width="34" Height="34" CornerRadius="9"
+                                                            Background="{DynamicResource Blink.Tile}"
+                                                            BorderBrush="{DynamicResource Blink.TileLine}" BorderThickness="1"
+                                                            Margin="0,0,13,0">
+                                                        <TextBlock Text="▣" FontSize="16"
+                                                                   Foreground="{DynamicResource Blink.Accent}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock FontFamily="{DynamicResource Blink.Mono}" FontSize="13"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding ParentSeg, Mode=OneWay}"
+                                                                 Foreground="{DynamicResource Blink.TxtFaint}"/><Run
+                                                                 Text="{Binding Leaf, Mode=OneWay}"
+                                                                 Foreground="{DynamicResource Blink.Txt}"/>
+                                                        </TextBlock>
+                                                        <TextBlock Text="{Binding Sub, Mode=OneWay}" FontSize="11.5"
+                                                                   Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="2" Style="{StaticResource RemoveBtn}"
+                                                            Click="RemoveFolder_Click" ToolTip="제거"
+                                                            Tag="{Binding Path, Mode=OneWay}">
+                                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                              StrokeThickness="1.4" StrokeStartLineCap="Round"
+                                                              Data="M4,4 L10,10 M10,4 L4,10"/>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock x:Name="EmptyHint" Text="인덱싱할 폴더를 추가하세요"
+                                           Foreground="{DynamicResource Blink.TxtFaint}" FontSize="13"
+                                           HorizontalAlignment="Center" Padding="30" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Actions -->
+                        <StackPanel Orientation="Horizontal" Margin="0,13,0,0">
+                            <Button Style="{StaticResource PillBtnAccent}" Click="AddFolder_Click" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Width="16" Height="16" Stretch="Uniform" Margin="0,0,8,0"
+                                          Stroke="{DynamicResource Blink.Txt}" StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round" Data="M8,3 L8,13 M3,8 L13,8"/>
+                                    <TextBlock Text="폴더 추가" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillBtn}" Click="Reindex_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="↻" FontSize="15" Margin="0,0,8,0" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Blink.Txt}"/>
+                                    <TextBlock Text="지금 다시 인덱싱" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Index status -->
+                        <StackPanel x:Name="ProgressArea" Orientation="Horizontal" Margin="0,14,0,0">
+                            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,9,0" Fill="#3FB950"/>
+                            <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                       Foreground="{DynamicResource Blink.TxtDim}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ProgressBar x:Name="IndexProgressBar" Height="4" Minimum="0" Maximum="100" Margin="0,12,0,0"
+                                     Value="{Binding Percent, Mode=OneWay}"
+                                     Visibility="{Binding IsIndexing, Converter={StaticResource Blink.BoolToVis}}"
+                                     Background="{DynamicResource Blink.Inset}"
+                                     Foreground="{DynamicResource Blink.Accent}" BorderThickness="0"/>
+
+                        <!-- Auto-index interval -->
+                        <Border BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="0,1,0,0"
+                                Margin="0,18,0,0" Padding="0,18,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="자동 인덱싱 주기" FontSize="14" FontWeight="Medium"
+                                               Foreground="{DynamicResource Blink.Txt}"/>
+                                    <TextBlock Text="변경된 파일을 이 간격마다 백그라운드에서 다시 인덱싱합니다"
+                                               FontSize="12" Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <Grid Grid.Column="1" VerticalAlignment="Center">
+                                    <ToggleButton x:Name="IntervalToggle" Style="{StaticResource SelectToggle}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse x:Name="IntervalPulse" Width="7" Height="7" VerticalAlignment="Center"
+                                                     Margin="0,0,8,0" Fill="{DynamicResource Blink.Accent}"/>
+                                            <TextBlock x:Name="IntervalLabel" Grid.Column="1" Text="1시간마다"
+                                                       VerticalAlignment="Center"/>
+                                            <Path Grid.Column="2" Width="13" Height="13" Stretch="Uniform" Margin="10,0,0,0"
+                                                  Stroke="{DynamicResource Blink.TxtFaint}" StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Data="M3.5,5.5 L7,9 L10.5,5.5"/>
+                                        </Grid>
+                                    </ToggleButton>
+                                    <Popup x:Name="IntervalPopup" PlacementTarget="{Binding ElementName=IntervalToggle}"
+                                           Placement="Bottom" HorizontalOffset="0" VerticalOffset="7"
+                                           StaysOpen="False" AllowsTransparency="True"
+                                           IsOpen="{Binding IsChecked, ElementName=IntervalToggle, Mode=TwoWay}">
+                                        <Border MinWidth="250" CornerRadius="13" Padding="6"
+                                                Background="{DynamicResource Blink.Surface}"
+                                                BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="40" ShadowDepth="10" Direction="270"
+                                                                  Opacity="0.5" Color="#000000"/>
+                                            </Border.Effect>
+                                            <ItemsControl x:Name="IntervalOptions">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Click="IntervalOption_Click" Tag="{Binding Key}"
+                                                                Cursor="Hand" HorizontalContentAlignment="Stretch"
+                                                                Background="Transparent" BorderThickness="0">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="ob" CornerRadius="9" Padding="11,10"
+                                                                            Background="Transparent">
+                                                                        <ContentPresenter/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="ob" Property="Background"
+                                                                                    Value="{DynamicResource Blink.RowHover}"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <Path Grid.Column="0" Width="15" Height="15" Stretch="Uniform"
+                                                                      Margin="0,0,11,0" VerticalAlignment="Center"
+                                                                      Stroke="{DynamicResource Blink.Accent}" StrokeThickness="1.6"
+                                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                                      Data="M3,8.5 L6,11.5 L13,4"
+                                                                      Visibility="{Binding IsSelected, Converter={StaticResource Blink.BoolToVis}}"/>
+                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Title, Mode=OneWay}" FontSize="13"
+                                                                               FontWeight="Medium" Foreground="{DynamicResource Blink.Txt}"/>
+                                                                    <TextBlock Text="{Binding Desc, Mode=OneWay}" FontSize="11.5"
+                                                                               Foreground="{DynamicResource Blink.TxtDim}" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                                <TextBlock Grid.Column="2" Text="{Binding Tag, Mode=OneWay}"
+                                                                           FontFamily="{DynamicResource Blink.Mono}" FontSize="10.5"
+                                                                           Foreground="{DynamicResource Blink.TxtFaint}"
+                                                                           VerticalAlignment="Center" Margin="11,0,0,0"/>
+                                                            </Grid>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border Height="1" Background="{DynamicResource Blink.Hairline}" Margin="0,26,0,0"/>
+
+                        <!-- Startup -->
+                        <Grid Margin="0,26,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Windows 시작 시 Blink 실행" FontSize="14" FontWeight="Medium"
+                                           Foreground="{DynamicResource Blink.Txt}"/>
+                                <TextBlock Text="로그인하면 백그라운드에서 자동으로 시작하고 트레이에 상주합니다"
+                                           FontSize="12" Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <ToggleButton x:Name="AutostartToggle" Grid.Column="1" Style="{StaticResource IosToggle}"
+                                          VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- Hotkey -->
+                        <Grid Margin="0,26,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="실행 단축키" FontSize="14" FontWeight="Medium"
+                                           Foreground="{DynamicResource Blink.Txt}"/>
+                                <TextBlock Text="어디서든 이 조합으로 Blink 검색창을 엽니다"
+                                           FontSize="12" Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" VerticalAlignment="Center" CornerRadius="10" Padding="8"
+                                    Background="{DynamicResource Blink.Inset}"
+                                    BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Style="{StaticResource Blink.KbdBorder}">
+                                        <TextBlock Text="Alt" Style="{StaticResource Blink.KbdText}"/>
+                                    </Border>
+                                    <TextBlock Text="+" Foreground="{DynamicResource Blink.TxtFaint}" FontSize="11"
+                                               VerticalAlignment="Center" Margin="6,0"/>
+                                    <Border Style="{StaticResource Blink.KbdBorder}">
+                                        <TextBlock Text="Space" Style="{StaticResource Blink.KbdText}"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Theme -->
+                        <Grid Margin="0,26,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="테마" FontSize="14" FontWeight="Medium"
+                                           Foreground="{DynamicResource Blink.Txt}"/>
+                                <TextBlock Text="검색창과 설정창의 모양"
+                                           FontSize="12" Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" VerticalAlignment="Center" CornerRadius="11" Padding="3"
+                                    Background="{DynamicResource Blink.Inset}"
+                                    BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ThemeDark" GroupName="Theme" Style="{StaticResource SegRadio}"
+                                                 Content="다크" Checked="Theme_Checked" Tag="dark"/>
+                                    <RadioButton x:Name="ThemeLight" GroupName="Theme" Style="{StaticResource SegRadio}"
+                                                 Content="라이트" Checked="Theme_Checked" Tag="light"/>
+                                    <RadioButton x:Name="ThemeSystem" GroupName="Theme" Style="{StaticResource SegRadio}"
+                                                 Content="시스템" Checked="Theme_Checked" Tag="system"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Height="1" Background="{DynamicResource Blink.Hairline}" Margin="0,26,0,0"/>
+
+                        <!-- Database path -->
+                        <TextBlock Text="STORAGE" FontFamily="{DynamicResource Blink.Mono}" FontSize="10.5"
+                                   Foreground="{DynamicResource Blink.Accent}" Margin="0,26,0,10"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                            <TextBlock Text="데이터베이스 경로" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Blink.Txt}"/>
+                            <TextBlock Text="인덱스가 저장되는 위치" FontSize="12"
+                                       Foreground="{DynamicResource Blink.TxtFaint}" VerticalAlignment="Bottom"
+                                       Margin="10,0,0,1"/>
+                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" CornerRadius="10" Padding="13,10"
+                                    Background="{DynamicResource Blink.Inset}"
+                                    BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1">
+                                <TextBlock x:Name="DbPathText" FontFamily="{DynamicResource Blink.Mono}" FontSize="12.5"
+                                           Foreground="{DynamicResource Blink.TxtDim}" TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <Button Grid.Column="1" Style="{StaticResource IconBtn}" Margin="8,0,0,0"
+                                    Click="DbOpen_Click" ToolTip="폴더 열기">
+                                <Path Width="15" Height="15" Stretch="Uniform"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.2" StrokeLineJoin="Round"
+                                      Data="M2.5,4.5 L6.5,4.5 L7.7,6 L13.5,6 L13.5,12 L2.5,12 Z"/>
+                            </Button>
+                            <Button Grid.Column="2" Style="{StaticResource IconBtn}" Margin="8,0,0,0"
+                                    Click="DbChange_Click" ToolTip="변경">
+                                <Path Width="15" Height="15" Stretch="Uniform"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.2" StrokeLineJoin="Round"
+                                      Data="M10.5,2.5 L13.5,5.5 L6,13 L2.5,13.5 L3,10 Z"/>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ── Footer ────────────────────────────────────────────────────── -->
+                <Border Grid.Row="2" Background="{DynamicResource Blink.Surface2}"
+                        BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="0,1,0,0">
+                    <Grid Margin="28,16">
+                        <StackPanel x:Name="SavedIndicator" Orientation="Horizontal" VerticalAlignment="Center"
+                                    HorizontalAlignment="Left" Visibility="Hidden">
+                            <Ellipse Width="6" Height="6" VerticalAlignment="Center" Margin="0,0,7,0" Fill="#3FB950"/>
+                            <TextBlock Text="저장됨" FontFamily="{DynamicResource Blink.Mono}" FontSize="11.5"
+                                       Foreground="{DynamicResource Blink.TxtFaint}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource PillBtnGhost}" Content="닫기" Click="Close_Click" Margin="0,0,10,0"/>
+                            <Button Style="{StaticResource PillBtnPrimary}" Content="저장" Click="Save_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Border>
 </Window>
