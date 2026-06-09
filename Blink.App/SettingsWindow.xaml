@@ -4,6 +4,7 @@
 <Window x:Class="Blink.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctrl="clr-namespace:Blink.App.Controls"
         Title="Blink — 설정"
         Width="680" Height="760"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
@@ -165,35 +166,6 @@
                                 <Setter TargetName="knob" Property="HorizontalAlignment" Value="Right"/>
                                 <Setter TargetName="knob" Property="Margin" Value="0,0,2,0"/>
                                 <Setter TargetName="knob" Property="Fill" Value="{DynamicResource Blink.Accent}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- ── Segmented control buttons (theme) ────────────────────────────────── -->
-        <Style x:Key="SegRadio" TargetType="RadioButton">
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Foreground" Value="{DynamicResource Blink.TxtDim}"/>
-            <Setter Property="FontFamily" Value="{DynamicResource Blink.Sora}"/>
-            <Setter Property="FontSize" Value="12.5"/>
-            <Setter Property="FontWeight" Value="Medium"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="b" CornerRadius="8" Padding="14,7" Background="Transparent">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Blink.RowHover}"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Blink.AccentSoft}"/>
-                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Blink.AccentLine}"/>
-                                <Setter TargetName="b" Property="BorderThickness" Value="1"/>
-                                <Setter Property="Foreground" Value="{DynamicResource Blink.Txt}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -537,18 +509,24 @@
                                 <TextBlock Text="검색창과 설정창의 모양"
                                            FontSize="12" Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
                             </StackPanel>
-                            <Border Grid.Column="1" VerticalAlignment="Center" CornerRadius="11" Padding="3"
-                                    Background="{DynamicResource Blink.Inset}"
-                                    BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1">
-                                <StackPanel Orientation="Horizontal">
-                                    <RadioButton x:Name="ThemeDark" GroupName="Theme" Style="{StaticResource SegRadio}"
-                                                 Content="다크" Checked="Theme_Checked" Tag="dark"/>
-                                    <RadioButton x:Name="ThemeLight" GroupName="Theme" Style="{StaticResource SegRadio}"
-                                                 Content="라이트" Checked="Theme_Checked" Tag="light"/>
-                                    <RadioButton x:Name="ThemeSystem" GroupName="Theme" Style="{StaticResource SegRadio}"
-                                                 Content="시스템" Checked="Theme_Checked" Tag="system"/>
-                                </StackPanel>
-                            </Border>
+                            <ctrl:SwatchHexPicker x:Name="ThemePicker" Grid.Column="1"
+                                                  ShowSystemOption="True" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- Accent color -->
+                        <Grid Margin="0,26,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="강조 색상" FontSize="14" FontWeight="Medium"
+                                           Foreground="{DynamicResource Blink.Txt}"/>
+                                <TextBlock Text="선택·포커스·토글에 쓰이는 색"
+                                           FontSize="12" Foreground="{DynamicResource Blink.TxtDim}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <ctrl:SwatchHexPicker x:Name="AccentPicker" Grid.Column="1"
+                                                  ShowSystemOption="False" VerticalAlignment="Center"/>
                         </Grid>
 
                         <Border Height="1" Background="{DynamicResource Blink.Hairline}" Margin="0,26,0,0"/>

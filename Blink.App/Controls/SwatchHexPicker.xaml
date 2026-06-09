@@ -1,0 +1,64 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+     Reusable value-based color picker: optional 시스템 chip + preset swatch dots + a thin
+     divider + a "#" hex field (mono) + a live preview box. Used by the theme/accent rows in
+     SettingsWindow. Public surface lives in the code-behind (SelectedHex / IsSystem / ColorChanged). -->
+<UserControl x:Class="Blink.App.Controls.SwatchHexPicker"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- 시스템 chip (optional; collapsed unless ShowSystemOption=True) -->
+        <Border x:Name="SystemChip" CornerRadius="8" Padding="11,6" Margin="0,0,10,0"
+                Cursor="Hand" Visibility="Collapsed"
+                Background="{DynamicResource Blink.Inset}"
+                BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1"
+                MouseLeftButtonUp="SystemChip_Click">
+            <TextBlock x:Name="SystemChipText" Text="시스템" FontSize="12.5" FontWeight="Medium"
+                       Foreground="{DynamicResource Blink.TxtDim}"/>
+        </Border>
+
+        <!-- Preset swatch dots -->
+        <ItemsControl x:Name="SwatchList">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Width="26" Height="26" CornerRadius="13" Margin="0,0,7,0" Cursor="Hand"
+                            Background="Transparent"
+                            BorderBrush="{Binding Ring}" BorderThickness="2"
+                            MouseLeftButtonUp="Swatch_Click" Tag="{Binding Hex}">
+                        <Border Width="16" Height="16" CornerRadius="8" Background="{Binding Fill}"/>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Divider -->
+        <Border Width="1" Height="22" Margin="6,0,12,0"
+                Background="{DynamicResource Blink.HairlineStrong}"/>
+
+        <!-- # + hex field -->
+        <Border x:Name="HexBox" CornerRadius="9" Padding="10,7"
+                Background="{DynamicResource Blink.Inset}"
+                BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="#" FontFamily="{DynamicResource Blink.Mono}" FontSize="13"
+                           Foreground="{DynamicResource Blink.TxtFaint}" VerticalAlignment="Center"
+                           Margin="0,0,2,0"/>
+                <TextBox x:Name="HexInput" MaxLength="6" Width="62" BorderThickness="0"
+                         Background="Transparent"
+                         FontFamily="{DynamicResource Blink.Mono}" FontSize="13"
+                         Foreground="{DynamicResource Blink.Txt}"
+                         CaretBrush="{DynamicResource Blink.Txt}"
+                         VerticalContentAlignment="Center"
+                         TextChanged="HexInput_TextChanged"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Live preview -->
+        <Border x:Name="Preview" Width="26" Height="26" CornerRadius="8" Margin="10,0,0,0"
+                BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1"/>
+    </StackPanel>
+</UserControl>

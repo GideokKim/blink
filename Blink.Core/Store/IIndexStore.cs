@@ -36,4 +36,11 @@ public interface IIndexStore : IDisposable
 
     /// <summary>Total number of indexed documents.</summary>
     int Count();
+
+    /// <summary>
+    /// Aggregate stats for all documents whose path is under <paramref name="root"/>:
+    /// file count (bundle entries count as their member_count) and total bytes (SUM(size)).
+    /// A root with no documents returns (0, 0).
+    /// </summary>
+    (long FileCount, long TotalBytes) FolderStats(string root);
 }
