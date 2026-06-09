@@ -15,6 +15,7 @@ public sealed class HwpxParser : IParser
     public string Name => "HwpxParser";
     public string[] Extensions => [".hwpx"];
     public bool ReadsContent => true;
+    public long? MaxParseSize => 25L * 1024 * 1024;
 
     public string ExtractText(string path)
     {

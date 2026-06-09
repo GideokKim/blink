@@ -23,6 +23,7 @@ public partial class LauncherWindow : Window
     private readonly ClassicView _classic;
     private readonly SplitView _split;
     private readonly DispatcherTimer _toastTimer;
+    private readonly DispatcherTimer _searchDebounce;
     private bool _suppressHide;
     private bool _dotPulsing;
     private LauncherDirection _direction = LauncherDirection.Classic;
@@ -30,11 +31,12 @@ public partial class LauncherWindow : Window
     private const double WidthClassic = 640;
     private const double WidthSplit = 880;
 
-    internal LauncherWindow(IReadOnlyList<LaunchItem> index, IndexingStatusViewModel status)
+    internal LauncherWindow(IReadOnlyList<LaunchItem> index, IndexingStatusViewModel status,
+        Blink.Core.Search.ISearchProvider? provider = null)
     {
         InitializeComponent();
 
-        _vm = new LauncherViewModel(index);
+        _vm = new LauncherViewModel(index, provider);
         _status = status;
         DataContext = _vm;
         _vm.PropertyChanged += OnVmChanged;
@@ -47,6 +49,10 @@ public partial class LauncherWindow : Window
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); HideLauncher(); };
+
+        // Coalesce keystrokes before hitting the FTS index (real-mode searches touch SQLite).
+        _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); _vm.Query = SearchBox.Text; };
 
         Deactivated += (_, _) => { if (!_suppressHide) HideLauncher(); };
 
@@ -73,6 +79,9 @@ public partial class LauncherWindow : Window
 
     public void ToggleTheme() => ThemeManager.Toggle();
 
+    /// <summary>Flip the launcher between demo and real-index results (see <see cref="LauncherViewModel.SetIndexMode"/>).</summary>
+    public void SetIndexMode(int docCount) => _vm.SetIndexMode(docCount);
+
     // ── Summon / hide ───────────────────────────────────────────────────────────
     public void Summon()
     {
@@ -97,6 +106,7 @@ public partial class LauncherWindow : Window
     public void HideLauncher()
     {
         _toastTimer.Stop();
+        _searchDebounce.Stop();
         Hide();
     }
 
@@ -115,7 +125,9 @@ public partial class LauncherWindow : Window
     // ── Search input ──────────────────────────────────────────────────────────
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        _vm.Query = SearchBox.Text;
+        // Debounce the query update; chrome (placeholder/count) updates immediately.
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
         UpdateChrome();
     }
 
@@ -184,7 +196,13 @@ public partial class LauncherWindow : Window
                 e.Handled = true;
                 break;
             case Key.Escape:
-                if (SearchBox.Text.Length > 0) SearchBox.Text = ""; // 1st press clears
+                if (SearchBox.Text.Length > 0)
+                {
+                    // 1st press clears — bypass the debounce so results empty immediately.
+                    _searchDebounce.Stop();
+                    SearchBox.Text = "";
+                    _vm.Query = "";
+                }
                 else HideLauncher();                                 // 2nd press hides
                 e.Handled = true;
                 break;

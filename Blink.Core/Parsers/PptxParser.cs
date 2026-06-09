@@ -13,6 +13,7 @@ public sealed class PptxParser : IParser
     public string Name => "PptxParser";
     public string[] Extensions => [".pptx"];
     public bool ReadsContent => true;
+    public long? MaxParseSize => 50L * 1024 * 1024;
 
     public string ExtractText(string path)
     {

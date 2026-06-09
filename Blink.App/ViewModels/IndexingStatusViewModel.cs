@@ -22,7 +22,11 @@ public sealed class IndexingStatusViewModel : ObservableObject
     public int Total { get => _total; private set { if (Set(ref _total, value)) RaiseDerived(); } }
 
     private string _currentName = "";
-    public string CurrentName { get => _currentName; private set => Set(ref _currentName, value); }
+    public string CurrentName
+    {
+        get => _currentName;
+        private set { if (Set(ref _currentName, value)) Raise(nameof(StatusText)); }
+    }
 
     private long _documentCount;
     public long DocumentCount { get => _documentCount; private set { if (Set(ref _documentCount, value)) RaiseDerived(); } }
@@ -30,9 +34,12 @@ public sealed class IndexingStatusViewModel : ObservableObject
     public int Percent => _total > 0 ? (int)Math.Round(100.0 * _processed / _total) : 0;
     public bool HasCount => _documentCount > 0;
 
-    /// <summary>Settings-window status line.</summary>
+    /// <summary>Settings-window status line (includes the file currently being processed).</summary>
     public string StatusText => _isIndexing
-        ? (_total > 0 ? $"인덱싱 중… {Processed:N0} / {Total:N0} ({Percent}%)" : "인덱싱 시작 중…")
+        ? (_total > 0
+            ? $"인덱싱 중… {Processed:N0} / {Total:N0} ({Percent}%)"
+                + (string.IsNullOrEmpty(_currentName) ? "" : $" · {_currentName}")
+            : "인덱싱 시작 중…")
         : (_documentCount > 0 ? $"완료 · {_documentCount:N0}개 문서 인덱싱됨" : "");
 
     /// <summary>Begin a new indexing run (resets counters).</summary>

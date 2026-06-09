@@ -29,7 +29,7 @@
             <!-- Indexing progress (bound to the shared IndexingStatusViewModel) -->
             <StackPanel x:Name="ProgressArea" Margin="0,0,0,10">
                 <ProgressBar x:Name="IndexProgressBar" Height="6" Minimum="0" Maximum="100"
-                             Value="{Binding Percent}"
+                             Value="{Binding Percent, Mode=OneWay}"
                              Visibility="{Binding IsIndexing, Converter={StaticResource Blink.BoolToVis}}"/>
                 <TextBlock x:Name="IndexStatusText" Text="{Binding StatusText}"
                            FontSize="11.5" Foreground="#666666" Margin="0,4,0,0"

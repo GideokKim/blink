@@ -91,9 +91,12 @@ public sealed class IndexerTests : IDisposable
         var collector = new SyncProgress();
         using var store2 = NewStore();
         new Indexer().Index(dir, store2, collector, CancellationToken.None);
-        Assert.Equal(3, collector.Reports.Count);
+        // Each new file reports twice: once before extraction (current-file display) and once
+        // after it is added. 3 fresh files → 6 reports; final processed/total still 3.
+        Assert.Equal(6, collector.Reports.Count);
         Assert.Equal(3, collector.Reports[^1].Processed);
         Assert.Equal(3, collector.Reports[^1].Total);
+        Assert.Contains(collector.Reports, r => r.CurrentPath is not null && r.CurrentPath.EndsWith(".txt"));
     }
 
     [Fact]

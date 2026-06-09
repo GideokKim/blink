@@ -15,8 +15,17 @@ public sealed class XlsxParser : IParser
     public string Name => "XlsxParser";
     public string[] Extensions => [".xlsx"];
     public bool ReadsContent => true;
+    public long? MaxParseSize => 25L * 1024 * 1024;
 
-    public string ExtractText(string path)
+    // A workbook may stay under the 25MB size cap yet still explode on cell count (huge sheets,
+    // conditional-formatting bloat). Walk rows so we can bail out with a partial body once we hit
+    // either ceiling instead of touching every cell (O(cells)).
+    private const int MaxCells = 100_000;
+    private const int MaxRows = 10_000;
+
+    public string ExtractText(string path) => ExtractText(path, MaxCells, MaxRows);
+
+    public string ExtractText(string path, int maxCells, int maxRows)
     {
         using var doc = SpreadsheetDocument.Open(path, false);
         var workbookPart = doc.WorkbookPart;
@@ -25,19 +34,25 @@ public sealed class XlsxParser : IParser
 
         var sst = workbookPart.SharedStringTablePart?.SharedStringTable;
         var sb = new StringBuilder();
+        int cells = 0, rows = 0;
+        bool truncated = false;
 
         foreach (var wsPart in workbookPart.WorksheetParts)
         {
-            if (wsPart.Worksheet is null)
-                continue;
-            foreach (var cell in wsPart.Worksheet.Descendants<Cell>())
+            if (truncated) break;
+            if (wsPart.Worksheet is null) continue;
+
+            foreach (var row in wsPart.Worksheet.Descendants<Row>())
             {
-                var text = CellText(cell, sst);
-                if (text.Length > 0)
+                if (++rows > maxRows) { truncated = true; break; }
+                foreach (var cell in row.Elements<Cell>())
                 {
-                    sb.Append(text);
-                    sb.Append(' ');
+                    var text = CellText(cell, sst);
+                    if (text.Length == 0) continue;          // sparse/empty cells aren't counted
+                    sb.Append(text); sb.Append(' ');
+                    if (++cells >= maxCells) { truncated = true; break; }
                 }
+                if (truncated) break;
             }
             sb.Append('\n');
         }
