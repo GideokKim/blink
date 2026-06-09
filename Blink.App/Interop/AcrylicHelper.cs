@@ -4,23 +4,23 @@ using System.Runtime.InteropServices;
 namespace Blink.App.Interop;
 
 /// <summary>
-/// Applies an acrylic/blur backdrop + rounded corners to a window, branching on OS version:
-///   • Win11 (build 22000+): DWMWA_SYSTEMBACKDROP_TYPE (acrylic) + DWMWA_WINDOW_CORNER_PREFERENCE.
-///   • Win10 1809+ (build 17763+): undocumented SetWindowCompositionAttribute with
-///     ACCENT_ENABLE_ACRYLICBLURBEHIND, rounded corners via an HRGN region.
-/// Falls back to a flat translucent brush (caller-controlled) if composition fails.
+/// Applies an acrylic/blur backdrop + rounded corners to the launcher window.
 ///
-/// IMPORTANT: do NOT set WPF AllowsTransparency=true on the Win11 DWM-backdrop path —
-/// a per-pixel-alpha layered window suppresses the system backdrop. Use AllowsTransparency
-/// only for the last-resort flat-translucent fallback. Keep text at #111111 for legibility.
+/// The launcher is a WPF per-pixel-alpha window (AllowsTransparency=true) so it can render a
+/// floating rounded panel + drop shadow. That layered-window style SUPPRESSES the Win11
+/// DWMWA_SYSTEMBACKDROP_TYPE backdrop, so we do NOT use it. Instead, on both Win10 1809+ and
+/// Win11 we use the undocumented SetWindowCompositionAttribute / ACCENT_ENABLE_ACRYLICBLURBEHIND,
+/// which DOES blur behind a layered window. Rounded corners: DWM corner preference on Win11,
+/// an HRGN region on Win10. Falls back to the caller's translucent BgGlass brush if composition fails.
+///
+/// The acrylic tint is kept light so the blur reads as glass rather than a solid fill; the
+/// translucent BgGlass brush is layered on top in XAML (see ThemeManager.GlassAlpha).
 /// </summary>
 internal static class AcrylicHelper
 {
     // ── DWM (Win11) ──────────────────────────────────────────────────────────
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-    private const int DWMWA_SYSTEMBACKDROP_TYPE       = 38;
-    private const int DWMSBT_TRANSIENTWINDOW          = 3; // acrylic
-    private const int DWMWCP_ROUND                     = 2;
+    private const int DWMWCP_ROUND                    = 2;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int value, int size);
@@ -71,20 +71,20 @@ internal static class AcrylicHelper
     {
         try
         {
+            // Win11: let DWM round the corners. We deliberately skip DWMWA_SYSTEMBACKDROP_TYPE —
+            // it is suppressed for AllowsTransparency layered windows (which the launcher is).
             if (IsWin11)
             {
-                int backdrop = DWMSBT_TRANSIENTWINDOW;
-                DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
                 int corner = DWMWCP_ROUND;
                 DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
-                return true;
             }
 
-            // Win10 acrylic via composition attribute.
+            // Acrylic blur-behind via composition attribute — works with the layered window on
+            // both Win10 1809+ and Win11. Light tint so the blur reads as glass, not a solid fill.
             var accent = new AccentPolicy
             {
                 AccentState = AccentState.ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                GradientColor = 0xAAFFFFFF, // ~67% white tint; keeps #111111 text legible
+                GradientColor = 0x59FFFFFF, // ~35% white tint; lets the blur show through
             };
             int size = Marshal.SizeOf(accent);
             nint ptr = Marshal.AllocHGlobal(size);
@@ -104,8 +104,8 @@ internal static class AcrylicHelper
                 Marshal.FreeHGlobal(ptr);
             }
 
-            // Rounded corners (Win10 has no DWM corner preference).
-            if (width > 0 && height > 0)
+            // Rounded corners on Win10 (no DWM corner preference there).
+            if (!IsWin11 && width > 0 && height > 0)
             {
                 nint rgn = CreateRoundRectRgn(0, 0, width, height, cornerRadius, cornerRadius);
                 SetWindowRgn(hwnd, rgn, true);

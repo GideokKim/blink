@@ -37,9 +37,9 @@ internal static class ThemeManager
 
     public static LauncherTheme Current { get; private set; } = LauncherTheme.Dark;
     public static double AccentHue { get; private set; } = 250;
-    public static double GlassAlpha { get; private set; } = 0.62;
+    public static double GlassAlpha { get; private set; } = 0.45;
 
-    public static void Apply(LauncherTheme theme, double accentHue = 250, double glassAlpha = 0.62)
+    public static void Apply(LauncherTheme theme, double accentHue = 250, double glassAlpha = 0.45)
     {
         Current = theme;
         AccentHue = accentHue;

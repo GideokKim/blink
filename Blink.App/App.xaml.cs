@@ -32,7 +32,7 @@ public partial class App : Application
         _config = AppConfig.Load();
 
         // Theme tokens must be published before any launcher control is created.
-        ThemeManager.Apply(ThemeOf(_config), _config.AccentHue, 0.62);
+        ThemeManager.Apply(ThemeOf(_config), _config.AccentHue, 0.45);
 
         // Production content index + GUI search facade. Built before the launcher so the real
         // FTS provider can be injected and the initial demo/real mode decided up front.
