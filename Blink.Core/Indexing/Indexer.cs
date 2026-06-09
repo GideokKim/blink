@@ -30,6 +30,9 @@ public sealed class Indexer
 {
     private const int BatchSize = 500;
 
+    /// <summary>Global ceiling on file size for body extraction; bigger files are filename-only.</summary>
+    private const long MaxContentBytes = 100L * 1024 * 1024;
+
     private readonly FileExcluder? _excluder;
     private readonly int _bundleThreshold;
 
@@ -129,9 +132,11 @@ public sealed class Indexer
             }
 
             var parser = ParserRegistry.GetParser(path);
-            string content = parser.ReadsContent ? SafeExtract(parser, path) : string.Empty;
+            long size = SafeSize(path);
+            string content = ShouldExtract(parser.ReadsContent, size, parser.MaxParseSize, MaxContentBytes)
+                ? SafeExtract(parser, path) : string.Empty;
 
-            batch.Add(new Document(docId, path, mtime, SafeSize(path), content));
+            batch.Add(new Document(docId, path, mtime, size, content));
             if (batch.Count >= BatchSize) { store.UpsertMany(batch); batch.Clear(); }
 
             progress?.Report(new IndexProgress(processed, total, path));
@@ -187,6 +192,13 @@ public sealed class Indexer
     /// <summary>Synthetic doc id for a bundle group: <c>&lt;dir&gt;/__bundle__&lt;ext&gt;</c>.</summary>
     private static string BundleId((string Dir, string Ext) key)
         => Path.Combine(key.Dir, BundleMarker + key.Ext);
+
+    /// <summary>
+    /// Pure gate: extract a file's body only if its parser reads content AND its size is within
+    /// the tighter of the global cap and the parser's own <see cref="IParser.MaxParseSize"/>.
+    /// </summary>
+    public static bool ShouldExtract(bool readsContent, long size, long? parserCap, long globalCap)
+        => readsContent && size <= Math.Min(globalCap, parserCap ?? long.MaxValue);
 
     private static string SafeExtract(IParser parser, string path)
     {

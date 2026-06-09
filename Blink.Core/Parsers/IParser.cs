@@ -17,4 +17,11 @@ public interface IParser
 
     /// <summary>Extract text content from the file at <paramref name="path"/>.</summary>
     string ExtractText(string path);
+
+    /// <summary>
+    /// Optional per-parser byte ceiling above which the body is skipped (filename search still
+    /// works). Null = no parser-specific cap (only the indexer's global cap applies). Reached
+    /// through the interface type — see <see cref="Indexing.Indexer.ShouldExtract"/>.
+    /// </summary>
+    long? MaxParseSize => null;
 }
