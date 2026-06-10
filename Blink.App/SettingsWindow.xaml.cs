@@ -221,7 +221,8 @@ public partial class SettingsWindow : Window
 
 /// <summary>
 /// A folder row: the full path split into a dimmed parent segment + leaf, plus an index-stats
-/// subtitle ("{n} 파일 · {size} · 마지막 인덱싱 {상대시각}" or "대기 중…" when never indexed).
+/// subtitle (format rules live in <see cref="FolderStatusFormat"/>). "대기 중…" only when the
+/// folder was never indexed; an indexed-but-empty folder shows "0 파일 · 마지막 인덱싱 …".
 /// </summary>
 public sealed class FolderRow
 {
@@ -246,38 +247,7 @@ public sealed class FolderRow
             Leaf = trimmed;
         }
 
-        if (lastIndexedUtc is null || stats is null || stats.Value.count <= 0)
-        {
-            Sub = "대기 중…";
-        }
-        else
-        {
-            var (count, bytes) = stats.Value;
-            Sub = $"{count:N0} 파일 · {HumanSize(bytes)} · 마지막 인덱싱 {RelTime(lastIndexedUtc.Value)}";
-        }
-    }
-
-    /// <summary>Human-readable byte size (1024-based; 1 decimal for KB and up).</summary>
-    private static string HumanSize(long bytes)
-    {
-        if (bytes < 1024) return $"{bytes} B";
-        double v = bytes / 1024.0;
-        if (v < 1024) return $"{v:0.0} KB";
-        v /= 1024.0;
-        if (v < 1024) return $"{v:0.0} MB";
-        v /= 1024.0;
-        return $"{v:0.0} GB";
-    }
-
-    /// <summary>Relative time in Korean: 방금 / N분 전 / N시간 전 / N일 전.</summary>
-    private static string RelTime(DateTime utc)
-    {
-        var span = DateTime.UtcNow - utc;
-        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
-        if (span.TotalMinutes < 1) return "방금";
-        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}분 전";
-        if (span.TotalDays < 1) return $"{(int)span.TotalHours}시간 전";
-        return $"{(int)span.TotalDays}일 전";
+        Sub = FolderStatusFormat.Subtitle(stats, lastIndexedUtc, DateTime.UtcNow);
     }
 }
 
