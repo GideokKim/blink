@@ -1,5 +1,9 @@
 # Blink
 
+[![Release](https://img.shields.io/github/v/release/GideokKim/blink?label=release)](https://github.com/GideokKim/blink/releases/latest)
+[![License](https://img.shields.io/badge/license-source--available-blue)](LICENSE)
+[![Buy me a coffee](https://img.shields.io/badge/%E2%98%95%20buy%20me%20a%20coffee-KakaoPay-FFCD00?logo=kakaotalk&logoColor=black)](https://qr.kakaopay.com/Ej7nHHsn0)
+
 A Korean-friendly instant-search desktop launcher — press **Left Alt + Space**, type, and
 search file names *and* contents across large document/NAS trees. Built on .NET 8 with a
 SQLite FTS5 engine and a WPF spotlight UI.
