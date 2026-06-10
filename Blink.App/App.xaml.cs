@@ -55,6 +55,8 @@ public partial class App : Application
         _indexing.Completed += OnIndexingCompleted;                    // background thread → marshal
         // FolderCompleted fires on the background thread; just record under lock.
         _indexing.FolderCompleted += f => { lock (_pendingFolderTimes) _pendingFolderTimes[f] = DateTime.UtcNow; };
+        // A failed folder is skipped (no completion stamp) and the run continues; log for diagnosis.
+        _indexing.FolderFailed += (f, ex) => System.Diagnostics.Trace.WriteLine($"[Blink] indexing failed for '{f}': {ex}");
 
         _hotkey = new HotkeyHook();
         _hotkey.HotkeyPressed += () => _launcher!.Summon();
@@ -62,11 +64,13 @@ public partial class App : Application
         SetupTray();
 
         // Background auto-reindex on the configured cadence ("수동" disables it). Marshal the
-        // tick onto the UI thread; StartReindex touches UI-affine state.
+        // tick onto the UI thread; StartReindex touches UI-affine state. A tick that lands
+        // while a run is still in flight is skipped — restarting would cancel the run and
+        // reset its progress (a full pass over a network share can outlast the cadence).
         _autoIndex = new AutoIndexScheduler(() =>
             Dispatcher.Invoke(() =>
             {
-                if (_config.Folders.Length > 0)
+                if (_config.Folders.Length > 0 && _indexing is { IsBusy: false })
                     StartReindex(_config.Folders);
             }));
         _autoIndex.Configure(_config.AutoIndexInterval);
