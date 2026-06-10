@@ -68,4 +68,11 @@ dotnet run --project Blink.Cli -- prune "/path/to/docs"  # 미리보기; --apply
 
 ## 라이선스
 
-저장소 참고.
+**소스 공개, 무료 사용** — 누구나 (직장에서의 업무 사용을 포함해) Blink를 무료로
+설치하고 사용할 수 있습니다. 소스 코드는 투명성과 보안 검토를 위해 공개되어
+있지만, 수정하거나 다른 소프트웨어에 재사용하거나 소스를 재배포하는 것은
+허용되지 않습니다. 자세한 내용: [LICENSE](LICENSE) ([한국어 번역](LICENSE.ko.md))
+
+Blink가 시간을 아껴줬다면 커피 한 잔으로 응원해주세요. ☕
+
+[☕ 카카오페이로 커피 한 잔 사주기](https://qr.kakaopay.com/Ej7nHHsn0)
