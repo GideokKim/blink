@@ -1,5 +1,9 @@
 # Blink
 
+[![Release](https://img.shields.io/github/v/release/GideokKim/blink?label=release)](https://github.com/GideokKim/blink/releases/latest)
+[![License](https://img.shields.io/badge/license-source--available-blue)](LICENSE.ko.md)
+[![커피 한 잔 사주기](https://img.shields.io/badge/%E2%98%95%20%EC%BB%A4%ED%94%BC%20%ED%95%9C%20%EC%9E%94%20%EC%82%AC%EC%A3%BC%EA%B8%B0-%EC%B9%B4%EC%B9%B4%EC%98%A4%ED%8E%98%EC%9D%B4-FFCD00?logo=kakaotalk&logoColor=black)](https://qr.kakaopay.com/Ej7nHHsn0)
+
 한글 친화 데스크톱 즉시 검색 런처입니다. **왼쪽 Alt + Space**를 누르고 입력하면 대규모
 문서/NAS 트리에서 파일 이름과 *본문*을 함께 검색합니다. .NET 8 기반이며 SQLite FTS5 검색
 엔진과 WPF 스포트라이트 UI로 구성됩니다.
