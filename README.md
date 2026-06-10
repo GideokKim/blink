@@ -71,4 +71,10 @@ platform equivalent.
 
 ## License
 
-See repository.
+**Source-available, free to use** — anyone may install and use Blink for free,
+including at work. The source is published for transparency and security review,
+but modifying it, reusing it in other software, or redistributing the source is
+not permitted. See [LICENSE](LICENSE) ([한국어](LICENSE.ko.md)).
+
+If Blink saves you time, you can buy me a coffee — see the
+[Korean README](README.ko.md#라이선스) for the support link. ☕

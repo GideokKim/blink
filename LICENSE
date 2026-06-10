@@ -1,0 +1,64 @@
+Blink Source-Available License, Version 1.0
+
+Copyright (c) 2026 gideok kim
+
+Korean translation: see LICENSE.ko.md. If the two versions conflict, this
+English version governs.
+
+1. Acceptance
+
+By using the Software, you agree to all of the terms below. "Software" means
+the Blink application, its source code, binaries, installers, and
+documentation in this repository and in official releases. "Author" means the
+copyright holder above.
+
+2. Free Use
+
+Anyone may install, run, and use the Software, free of charge, for any
+purpose — personal, educational, or commercial, including use at a workplace
+or on an organization's systems.
+
+3. Source Viewing
+
+You may read and review the source code for transparency, learning, and
+security auditing.
+
+4. Redistribution of Official Binaries
+
+You may copy and share unmodified official release binaries and installers
+(for example, for deployment within your organization), provided this license
+accompanies them and you do not charge for them.
+
+5. Restrictions
+
+Except as expressly permitted above, all rights are reserved. Without the
+Author's prior written permission, you may NOT:
+
+  a. modify the Software or create derivative works of it;
+  b. reuse, copy, or incorporate any portion of the source code into other
+     software, whether or not that software competes with Blink;
+  c. redistribute the source code, in original or modified form;
+  d. sell, rent, sublicense, or offer the Software as a hosted or managed
+     service.
+
+6. Contributions
+
+If you submit a contribution (such as a pull request) to this repository, you
+grant the Author a perpetual, worldwide, irrevocable, royalty-free license to
+use, modify, relicense, and distribute that contribution as part of the
+Software.
+
+7. Termination
+
+Your rights under this license end automatically if you violate it. Rights
+are restored if you cure the violation within 30 days of becoming aware of
+it, unless the Author notifies you otherwise.
+
+8. No Warranty; No Liability
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
