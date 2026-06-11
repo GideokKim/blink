@@ -57,6 +57,18 @@ public sealed class AppConfig
     [JsonPropertyName("folder_index_times")]
     public Dictionary<string, string> FolderIndexTimes { get; set; } = new();
 
+    /// <summary>Whether the app checks GitHub Releases for updates automatically (default on).</summary>
+    [JsonPropertyName("update_check")]
+    public bool UpdateCheck { get; set; } = true;
+
+    /// <summary>Version the user chose to skip (e.g. "1.2.0"); newer releases still notify.</summary>
+    [JsonPropertyName("skip_version")]
+    public string SkipVersion { get; set; } = "";
+
+    /// <summary>Last version whose "새로워진 점" was shown (or initialized); drives WhatsNewGate.</summary>
+    [JsonPropertyName("last_seen_version")]
+    public string LastSeenVersion { get; set; } = "";
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

@@ -101,6 +101,33 @@ public sealed class AppConfigTests : IDisposable
         Assert.Equal("2026-06-02T08:30:00.0000000Z", loaded.FolderIndexTimes["/home/user/notes"]);
     }
 
+    // ── Update fields ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void UpdateFields_Defaults()
+    {
+        var cfg = AppConfig.Load(_dir);
+        Assert.True(cfg.UpdateCheck);
+        Assert.Equal("", cfg.SkipVersion);
+        Assert.Equal("", cfg.LastSeenVersion);
+    }
+
+    [Fact]
+    public void UpdateFields_RoundTrip()
+    {
+        new AppConfig
+        {
+            UpdateCheck = false,
+            SkipVersion = "1.2.0",
+            LastSeenVersion = "1.1.0",
+        }.Save(_dir);
+
+        var loaded = AppConfig.Load(_dir);
+        Assert.False(loaded.UpdateCheck);
+        Assert.Equal("1.2.0", loaded.SkipVersion);
+        Assert.Equal("1.1.0", loaded.LastSeenVersion);
+    }
+
     // ── Migration: legacy dark ────────────────────────────────────────────────
 
     [Fact]
