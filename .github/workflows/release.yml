@@ -55,15 +55,19 @@ jobs:
       - name: Test engine
         run: dotnet test Blink.Core.Tests -c Release
 
+      # -p:Version stamps AssemblyInformationalVersion so the app knows its own version
+      # (the in-app updater compares it against the latest release tag).
       - name: Publish app (self-contained, single file)
         run: >
           dotnet publish Blink.App -c Release -r win-x64 --self-contained
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.ver.outputs.version }}
 
       - name: Publish indexer worker (self-contained, single file)
         run: >
           dotnet publish Blink.Indexer.Worker -c Release -r win-x64 --self-contained
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.ver.outputs.version }}
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
