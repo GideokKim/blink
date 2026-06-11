@@ -33,8 +33,40 @@ public sealed class InProcessProvider : ISearchProvider
         if (string.IsNullOrEmpty(content))
             return Array.Empty<MatchLine>();
 
-        // A line matches if it contains EVERY whitespace-separated query word
-        // (after NFC normalization + lower-casing on both sides).
+        return ExtractMatchLines(content, query, maxLines);
+    }
+
+    /// <summary>
+    /// Batch override: ONE <see cref="IContentStore.GetContents"/> round-trip for the whole
+    /// page, then in-memory extraction per doc — instead of N content SELECTs.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<MatchLine>> GetMatchLinesMany(
+        IEnumerable<string> docIds, string query, int maxLines = 5)
+    {
+        var ids = docIds as ICollection<string> ?? docIds.ToList();
+        var result = new Dictionary<string, IReadOnlyList<MatchLine>>(ids.Count);
+
+        if (_content is null || string.IsNullOrWhiteSpace(query))
+        {
+            foreach (var id in ids)
+                result[id] = Array.Empty<MatchLine>();
+            return result;
+        }
+
+        var contents = _content.GetContents(ids);
+        foreach (var id in ids)
+            result[id] = contents.TryGetValue(id, out var c) && c.Length > 0
+                ? ExtractMatchLines(c, query, maxLines)
+                : Array.Empty<MatchLine>();
+        return result;
+    }
+
+    /// <summary>
+    /// A line matches if it contains EVERY whitespace-separated query word
+    /// (after NFC normalization + lower-casing on both sides). Line numbers are 1-based.
+    /// </summary>
+    internal static IReadOnlyList<MatchLine> ExtractMatchLines(string content, string query, int maxLines)
+    {
         var words = Normalize(query).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (words.Length == 0)
             return Array.Empty<MatchLine>();

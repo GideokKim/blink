@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Lets tests exercise internal helpers (e.g. InProcessProvider.ExtractMatchLines). -->
+    <InternalsVisibleTo Include="Blink.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <PackageReference Include="PdfPig" Version="0.1.14" />

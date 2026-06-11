@@ -99,6 +99,7 @@ public partial class LauncherWindow : Window
     {
         _toastTimer.Stop();
         _searchDebounce.Stop();
+        _vm.CancelSearch(); // invalidate in-flight search so late results are never applied
         Hide();
     }
 

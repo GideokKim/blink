@@ -169,6 +169,67 @@ public sealed class SqliteFtsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Search_DoesNotBlock_DuringOpenWriteTransaction()
+    {
+        // The key WAL two-connection guarantee: while UpsertMany holds the write gate
+        // and an open transaction (background indexing batch), Search on the read-only
+        // connection must still return promptly instead of queuing behind the writer.
+        using var store = NewStore();
+        store.Upsert(Doc("/seed.txt", "공통키워드 시드"));
+
+        using var writerEntered = new ManualResetEventSlim(false);
+        using var releaseWriter = new ManualResetEventSlim(false);
+
+        IEnumerable<Document> BlockingDocs()
+        {
+            // Yield one doc so the transaction has done real work, then stall
+            // mid-iteration: the write transaction + _gate stay held open.
+            yield return Doc("/docs/blocking.txt", "공통키워드 본문");
+            writerEntered.Set();
+            releaseWriter.Wait();
+            yield return Doc("/docs/after.txt", "공통키워드 추가");
+        }
+
+        var writer = new Thread(() => store.UpsertMany(BlockingDocs()));
+        writer.Start();
+        try
+        {
+            Assert.True(writerEntered.Wait(TimeSpan.FromSeconds(5)),
+                "writer thread never entered the upsert transaction");
+
+            IReadOnlyList<SearchHit>? hits = null;
+            var search = Task.Run(() => hits = store.Search("공통"));
+            Assert.True(search.Wait(TimeSpan.FromSeconds(2)),
+                "Search blocked behind an open write transaction");
+            Assert.NotNull(hits);
+            Assert.Contains(hits!, h => h.DocId == "/seed.txt");
+        }
+        finally
+        {
+            // Always unblock and join the writer so a failed assert can't hang the run.
+            releaseWriter.Set();
+            writer.Join();
+        }
+
+        // After the writer commits, its docs are visible.
+        Assert.Equal(3, store.Count());
+    }
+
+    [Fact]
+    public void Search_SeesCommittedWrites()
+    {
+        // Writes go through the write connection; reads through the read-only one.
+        // WAL guarantees a committed write is visible to subsequent reads.
+        using var store = NewStore();
+        store.Upsert(Doc("/docs/new.txt", "신규문서 내용"));
+
+        var hits = store.Search("신규문서");
+        Assert.Single(hits);
+        Assert.Equal("/docs/new.txt", hits[0].DocId);
+        Assert.Equal("신규문서 내용", store.GetContent("/docs/new.txt"));
+    }
+
+    [Fact]
     public void FolderStats_MultipleFilesInNestedSubfolders_ReturnsSummedCountAndBytes()
     {
         using var store = NewStore();
@@ -227,6 +288,44 @@ public sealed class SqliteFtsStoreTests : IDisposable
         var (count, bytes) = store.FolderStats(root);
         Assert.Equal(0L, count);
         Assert.Equal(0L, bytes);
+    }
+
+    // ---- Search metadata pass-through ----
+    [Fact]
+    public void Search_PopulatesSizeMtimeBundleFlag()
+    {
+        using var store = NewStore();
+        store.Upsert(new Document(DocId: "/s/file.txt", Path: "/s/file.txt",
+            Mtime: 1750000000, Size: 4300, Content: "한글검색 내용"));
+        store.Upsert(new Document(DocId: "/s/bundle.jpg", Path: "/s/bundle.jpg",
+            Mtime: 0, Size: 0, Content: "한글검색", IsBundle: true, MemberCount: 3));
+
+        var hits = store.Search("한글검색");
+
+        var file = hits.Single(h => h.DocId == "/s/file.txt");
+        Assert.Equal(4300L, file.Size);
+        Assert.Equal(1750000000d, file.Mtime);
+        Assert.False(file.IsBundle);
+
+        var bundle = hits.Single(h => h.DocId == "/s/bundle.jpg");
+        Assert.True(bundle.IsBundle);
+    }
+
+    // ---- GetContents (batch) ----
+    [Fact]
+    public void GetContents_ReturnsOnlyExistingIds()
+    {
+        using var store = NewStore();
+        store.Upsert(Doc("/c/a.txt", "내용 A"));
+        store.Upsert(Doc("/c/b.txt", "내용 B"));
+
+        var map = store.GetContents(new[] { "/c/a.txt", "/c/b.txt", "/c/missing.txt" });
+
+        Assert.Equal(2, map.Count); // missing id omitted
+        Assert.Equal("내용 A", map["/c/a.txt"]);
+        Assert.Equal("내용 B", map["/c/b.txt"]);
+
+        Assert.Empty(store.GetContents(Array.Empty<string>())); // empty input → no SQL, empty dict
     }
 
     public void Dispose()

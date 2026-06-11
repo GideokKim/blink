@@ -125,16 +125,142 @@ public sealed class HitToLaunchItemTests : IDisposable
         }
     }
 
+    // ---- Convert with DB metadata (no filesystem stat) ----
+    [Fact]
+    public void Convert_WithDbMetadata_DoesNotStat()
+    {
+        // Path deliberately does NOT exist on disk — populated size/mod below PROVE
+        // the conversion used the hit's DB metadata instead of a filesystem stat.
+        var path = Path.Combine(Path.GetTempPath(), $"blink_meta_{Guid.NewGuid():N}.txt");
+        var now = new DateTime(2026, 6, 9, 12, 0, 0, DateTimeKind.Local);
+        long mtime = new DateTimeOffset(now.AddMinutes(-3)).ToUnixTimeSeconds();
+        var hit = new SearchHit("doc-m", path, -1.0, Size: 4300, Mtime: mtime);
+        var provider = new StubProvider(Array.Empty<MatchLine>());
+
+        var result = HitToLaunchItem.Convert(hit, "q", provider, now);
+
+        Assert.Equal(LaunchItemKind.File, result.Item.Type);
+        Assert.Equal("4.2 KB", result.Item.Size);
+        Assert.Equal("3분 전", result.Item.Mod);
+    }
+
+    [Fact]
+    public void Convert_BundleHit_IsFolderKind_NoSizeMod()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"blink_bundle_{Guid.NewGuid():N}");
+        var hit = new SearchHit("doc-bn", path, -1.0, Size: 0, Mtime: 0, IsBundle: true);
+        var provider = new StubProvider(Array.Empty<MatchLine>());
+
+        var result = HitToLaunchItem.Convert(hit, "q", provider, DateTime.Now);
+
+        Assert.Equal(LaunchItemKind.Folder, result.Item.Type);
+        Assert.Null(result.Item.Size);
+        Assert.Null(result.Item.Mod);
+    }
+
+    [Fact]
+    public void Convert_LegacyHit_FallsBackToStat()
+    {
+        var path = TempFile(".txt", "본문");
+        var now = new DateTime(2026, 6, 9, 12, 0, 0, DateTimeKind.Local);
+        var hit = new SearchHit("doc-lg", path, -1.0); // no metadata → stat path
+        var provider = new StubProvider(Array.Empty<MatchLine>());
+
+        var result = HitToLaunchItem.Convert(hit, "q", provider, now);
+
+        Assert.Equal(LaunchItemKind.File, result.Item.Type);
+        Assert.NotNull(result.Item.Size); // from the FileInfo stat
+        Assert.NotNull(result.Item.Mod);
+    }
+
+    // ---- ConvertAll ----
+    [Fact]
+    public void ConvertAll_MatchesPerHitConvert()
+    {
+        var pathA = TempFile(".txt", "본문 A");
+        var pathB = TempFile(".md", "본문 B");
+        var now = new DateTime(2026, 6, 9, 12, 0, 0, DateTimeKind.Local);
+        var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
+        var provider = new StubProvider(new[] { new MatchLine(1, "matched line") });
+
+        var batch = HitToLaunchItem.ConvertAll(hits, "본문", provider, CancellationToken.None, now);
+
+        Assert.Equal(hits.Length, batch.Count);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var single = HitToLaunchItem.Convert(hits[i], "본문", provider, now);
+            Assert.Equal(single.Item, batch[i].Item);           // LaunchItem is a record → value equality
+            Assert.Equal(single.Score, batch[i].Score);
+            Assert.Equal(single.ContentHit, batch[i].ContentHit);
+        }
+    }
+
+    [Fact]
+    public void ConvertAll_CanceledMidway_ThrowsOCE_StopsEarly()
+    {
+        var pathA = TempFile(".txt", "본문 A");
+        var pathB = TempFile(".txt", "본문 B");
+        var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
+        var cts = new CancellationTokenSource();
+        // Cancel while the batch line fetch sees the FIRST doc → the per-hit check
+        // trips before any hit is assembled (no stat work for either hit).
+        var provider = new StubProvider(Array.Empty<MatchLine>()) { OnGetMatchLines = _ => cts.Cancel() };
+
+        Assert.Throws<OperationCanceledException>(
+            () => HitToLaunchItem.ConvertAll(hits, "q", provider, cts.Token, DateTime.Now));
+        Assert.Equal(0, provider.GetMatchLinesCalls); // batch path — no per-doc round-trips
+    }
+
+    [Fact]
+    public void ConvertAll_CallsGetMatchLinesManyOnce()
+    {
+        var pathA = TempFile(".txt", "본문 A");
+        var pathB = TempFile(".md", "본문 B");
+        var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
+        var provider = new StubProvider(new[] { new MatchLine(1, "m") });
+
+        var batch = HitToLaunchItem.ConvertAll(hits, "본문", provider, CancellationToken.None, DateTime.Now);
+
+        Assert.Equal(2, batch.Count);
+        Assert.Equal(1, provider.GetMatchLinesManyCalls); // ONE batched fetch for the page
+        Assert.Equal(0, provider.GetMatchLinesCalls);     // no per-hit N+1 fallback
+    }
+
     /// <summary>Minimal <see cref="ISearchProvider"/> returning fixed match lines.</summary>
     private sealed class StubProvider : ISearchProvider
     {
         private readonly IReadOnlyList<MatchLine> _lines;
         public StubProvider(IReadOnlyList<MatchLine> lines) => _lines = lines;
 
+        /// <summary>Conversion-related call count (one <see cref="GetMatchLines"/> per converted hit).</summary>
+        public int GetMatchLinesCalls { get; private set; }
+        /// <summary>Optional hook invoked on each <see cref="GetMatchLines"/> call (e.g. to cancel mid-batch).</summary>
+        public Action<string>? OnGetMatchLines { get; init; }
+
         public IReadOnlyList<SearchHit> Search(string query, int limit = 50, int offset = 0)
             => Array.Empty<SearchHit>();
+        /// <summary>Batch call count (one per <see cref="HitToLaunchItem.ConvertAll"/> page).</summary>
+        public int GetMatchLinesManyCalls { get; private set; }
+
         public IReadOnlyList<MatchLine> GetMatchLines(string docId, string query, int maxLines = 5)
-            => _lines;
+        {
+            GetMatchLinesCalls++;
+            OnGetMatchLines?.Invoke(docId);
+            return _lines;
+        }
+
+        public IReadOnlyDictionary<string, IReadOnlyList<MatchLine>> GetMatchLinesMany(
+            IEnumerable<string> docIds, string query, int maxLines = 5)
+        {
+            GetMatchLinesManyCalls++;
+            var result = new Dictionary<string, IReadOnlyList<MatchLine>>();
+            foreach (var id in docIds)
+            {
+                OnGetMatchLines?.Invoke(id); // same hook so cancel-mid-batch is testable
+                result[id] = _lines;
+            }
+            return result;
+        }
         public IReadOnlyDictionary<string, long> GetBundleSizes(IEnumerable<string> docIds)
             => new Dictionary<string, long>();
     }

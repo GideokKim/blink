@@ -10,6 +10,12 @@ public interface IContentStore
     string? GetContent(string docId);
 
     /// <summary>
+    /// Batch variant of <see cref="GetContent"/>: contents for every id that exists,
+    /// in ONE round-trip. Missing ids are omitted from the result.
+    /// </summary>
+    IReadOnlyDictionary<string, string> GetContents(IEnumerable<string> docIds);
+
+    /// <summary>
     /// For each id that is a bundle entry, the number of real files it represents.
     /// Non-bundle / unknown ids are omitted from the result.
     /// </summary>
