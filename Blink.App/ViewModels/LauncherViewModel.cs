@@ -109,7 +109,9 @@ public sealed class LauncherViewModel : ObservableObject
             try
             {
                 rows = await Task.Run(() => real
-                    ? HitToLaunchItem.ConvertAll(_provider!.Search(q, RealLimit, 0), q, _provider!, ct)
+                    ? HitToLaunchItem.ConvertAll(
+                        _provider!.Search(q, SearchPolicy.EffectiveLimit(q, RealLimit), 0),
+                        q, _provider!, ct)
                     : LaunchSearch.Search(q, _index), ct);
             }
             catch (OperationCanceledException) { return; }   // superseded — 최신 검색이 UI를 책임짐
