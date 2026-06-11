@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Threading;
+using Blink.Core.Launch;
 
 namespace Blink.App.Interop;
 
@@ -10,7 +11,12 @@ namespace Blink.App.Interop;
 /// Installs a WH_KEYBOARD_LL hook on a dedicated background thread that runs
 /// its own Win32 message pump (GetMessage / TranslateMessage / DispatchMessage).
 ///
-/// Fires <see cref="HotkeyPressed"/> on the UI thread when LEFT Alt+Space is detected.
+/// Fires <see cref="HotkeyPressed"/> on the UI thread when LEFT Alt+Space is detected,
+/// and CONSUMES the hotkey: Space down/up are swallowed (callback returns 1) so the
+/// foreground app never sees them, and a dummy key (0xFF, tagged with
+/// <see cref="HotkeyInterceptor.InjectionMarker"/>) is injected while Alt is still
+/// held so the foreground app does not treat the sequence as a lone-Alt press and
+/// activate its menu bar.
 /// Specifically tracks VK_LMENU (0xA4) only — right-Alt (VK_RMENU 0xA5) is ignored.
 ///
 /// IMPORTANT: Low-level keyboard hooks have a system timeout (~300 ms by default,
@@ -26,8 +32,9 @@ internal sealed class HotkeyHook : IDisposable
     private const int WM_SYSKEYDOWN  = 0x0104;
     private const int WM_KEYUP       = 0x0101;
     private const int WM_SYSKEYUP    = 0x0105;
-    private const int VK_LMENU       = 0xA4; // Left Alt specifically — right-Alt (0xA5) NOT tracked
-    private const int VK_SPACE       = 0x20;
+    private const ushort VK_DUMMY        = 0xFF;     // 미할당 VK — 어떤 앱도 바인딩 안 함
+    private const uint   KEYEVENTF_KEYUP = 0x0002;
+    private const uint   INPUT_KEYBOARD  = 1;
 
     // ── Win32 P/Invoke ───────────────────────────────────────────────────────
     private delegate nint LowLevelKeyboardProc(int nCode, nint wParam, nint lParam);
@@ -57,6 +64,9 @@ internal sealed class HotkeyHook : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern nint GetModuleHandle(string? lpModuleName);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint cInputs, INPUT[] pInputs, int cbSize);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct MSG
     {
@@ -79,10 +89,32 @@ internal sealed class HotkeyHook : IDisposable
         public nint   dwExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint   dwFlags;
+        public uint   time;
+        public nuint  dwExtraInfo;
+    }
+
+    // Size = 40 필수: 실제 Win32 INPUT은 MOUSEINPUT(32바이트)을 포함한 union이라
+    // x64에서 40바이트다. KEYBDINPUT(24바이트)만 두면 32바이트가 되어 SendInput이
+    // cbSize 불일치로 ERROR_INVALID_PARAMETER 실패한다.
+    // NOTE: FieldOffset(8)은 x64 전용 (union 오프셋 = 포인터 정렬 8바이트).
+    // x86/AnyCPU-32에서는 오프셋 4라 깨진다 — Blink.App은 x64 단독 배포라 OK.
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    private struct INPUT
+    {
+        [FieldOffset(0)] public uint       type;
+        [FieldOffset(8)] public KEYBDINPUT ki; // x64: union 오프셋 8
+    }
+
     // ── State ────────────────────────────────────────────────────────────────
     private readonly SynchronizationContext _uiContext;
     private nint                            _hookHandle;
-    private volatile bool                   _leftAltDown;
+    private readonly HotkeyInterceptor      _interceptor = new(); // 단일 펌프 스레드 전용 — volatile 불필요
     private bool                            _disposed;
     private Thread?                         _pumpThread;
     private uint                            _pumpNativeThreadId; // Win32 thread id (NOT ManagedThreadId)
@@ -165,22 +197,41 @@ internal sealed class HotkeyHook : IDisposable
         if (nCode >= 0)
         {
             var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            uint vk      = kbStruct.vkCode;
             bool isDown  = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
             bool isUp    = wParam == WM_KEYUP   || wParam == WM_SYSKEYUP;
 
-            if (vk == VK_LMENU) // Left Alt only — VK_RMENU (0xA5) intentionally excluded
+            var action = _interceptor.Process(kbStruct.vkCode, isDown, isUp,
+                                              (ulong)kbStruct.dwExtraInfo);
+            if (action == HotkeyAction.SwallowAndFire)
             {
-                _leftAltDown = isDown;
-            }
-            else if (vk == VK_SPACE && isDown && _leftAltDown)
-            {
-                // Post to UI thread; callback returns immediately (O(1)).
+                // Alt가 아직 눌린 지금 더미 키를 주입해야 'Alt 단독' 메뉴 활성화가
+                // 깨진다. SendInput 1회는 마이크로초 단위 — LL 훅 타임아웃과 무관.
+                InjectDummyKey();
                 _uiContext.Post(_ => HotkeyPressed?.Invoke(), null);
             }
+            if (action != HotkeyAction.Forward)
+                return 1; // 이벤트 소비 — 포그라운드 앱에 전달되지 않음
         }
 
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// 미사용 VK(0xFF) down/up을 주입해 포그라운드 앱의 'Alt 단독 눌림' 판정을
+    /// 깬다. dwExtraInfo 마커로 우리 훅의 상태 추적에서는 제외된다.
+    /// VK_MENU를 합성하면 stuck-Alt가 발생하므로(ForegroundHelper 주석 참조) 금지.
+    /// </summary>
+    private static void InjectDummyKey()
+    {
+        var inputs = new INPUT[]
+        {
+            new() { type = INPUT_KEYBOARD, ki = new KEYBDINPUT
+                { wVk = VK_DUMMY, dwExtraInfo = HotkeyInterceptor.InjectionMarker } },
+            new() { type = INPUT_KEYBOARD, ki = new KEYBDINPUT
+                { wVk = VK_DUMMY, dwFlags = KEYEVENTF_KEYUP,
+                  dwExtraInfo = HotkeyInterceptor.InjectionMarker } },
+        };
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
     }
 
     // ── Dispose ──────────────────────────────────────────────────────────────
