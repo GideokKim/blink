@@ -9,9 +9,11 @@ using System.Windows.Threading;
 using Blink.App.Interop;
 using Blink.App.Mvvm;
 using Blink.App.Theming;
+using Blink.App.Update;
 using Blink.App.ViewModels;
 using Blink.Core.Config;
 using Blink.Core.Indexing;
+using Blink.Core.Update;
 
 namespace Blink.App;
 
@@ -25,6 +27,7 @@ public partial class SettingsWindow : Window
     private string _selectedThemeMode;
     private string _selectedBaseColor;
     private string _selectedAccent;
+    private readonly Action? _quitForUpdate;
 
     /// <summary>Raised when the user requests a re-index with the current folder set.</summary>
     public event Action<IReadOnlyList<string>>? ReindexRequested;
@@ -33,7 +36,8 @@ public partial class SettingsWindow : Window
     public event Action? SettingsSaved;
 
     public SettingsWindow(AppConfig config, IndexingStatusViewModel status,
-        Func<string, (long count, long bytes)>? statsProvider = null)
+        Func<string, (long count, long bytes)>? statsProvider = null,
+        Action? quitForUpdate = null)
     {
         InitializeComponent();
         _config = config;
@@ -74,6 +78,11 @@ public partial class SettingsWindow : Window
         AccentPicker.Presets = new[] { "#3B7FE3", "#4F46E5", "#06B6D4", "#14B8A6", "#F43F5E" };
         AccentPicker.SelectedHex = config.Accent;
         AccentPicker.ColorChanged += OnAccentPickerChanged;
+
+        // Update settings.
+        _quitForUpdate = quitForUpdate;
+        UpdateCheckToggle.IsChecked = config.UpdateCheck;
+        CurrentVersionText.Text = $"현재 버전 v{UpdateService.CurrentVersion}";
     }
 
     /// <summary>Build a folder row enriched with stats + last-indexed time from config.</summary>
@@ -190,6 +199,37 @@ public partial class SettingsWindow : Window
         }
     }
 
+    // ── Update check ──────────────────────────────────────────────────────────
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateBtn.IsEnabled = false;
+        UpdateStatusText.Text = "확인 중…";
+        try
+        {
+            // 수동 확인은 update_check=false여도, skip_version과 무관하게 항상 동작.
+            var release = await UpdateService.FetchLatestAsync();
+            if (UpdatePolicy.IsNewer(release, UpdateService.CurrentVersion))
+            {
+                UpdateStatusText.Text = $"새 버전 v{release!.Version}이 있습니다";
+                var win = new UpdateWindow(release, _config, _quitForUpdate ?? Close);
+                win.Show();
+                win.Activate();
+            }
+            else if (release is null)
+            {
+                UpdateStatusText.Text = "확인하지 못했습니다 — 네트워크를 확인해 주세요";
+            }
+            else
+            {
+                UpdateStatusText.Text = "최신 버전입니다";
+            }
+        }
+        finally
+        {
+            CheckUpdateBtn.IsEnabled = true;
+        }
+    }
+
     // ── Save ──────────────────────────────────────────────────────────────────
     private void Save_Click(object sender, RoutedEventArgs e)
     {
@@ -199,6 +239,7 @@ public partial class SettingsWindow : Window
         _config.ThemeMode = _selectedThemeMode;
         _config.BaseColor = _selectedBaseColor;
         _config.Accent = _selectedAccent;
+        _config.UpdateCheck = UpdateCheckToggle.IsChecked == true;
         AutostartManager.Apply(_config.Autostart);
         _config.Save();
 
