@@ -68,3 +68,5 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; \
   Flags: nowait postinstall skipifsilent
+; Silent runs are the in-app auto-update path: relaunch the new build automatically.
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: WizardSilent
