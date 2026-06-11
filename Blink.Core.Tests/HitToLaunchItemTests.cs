@@ -125,16 +125,63 @@ public sealed class HitToLaunchItemTests : IDisposable
         }
     }
 
+    // ---- ConvertAll ----
+    [Fact]
+    public void ConvertAll_MatchesPerHitConvert()
+    {
+        var pathA = TempFile(".txt", "본문 A");
+        var pathB = TempFile(".md", "본문 B");
+        var now = new DateTime(2026, 6, 9, 12, 0, 0, DateTimeKind.Local);
+        var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
+        var provider = new StubProvider(new[] { new MatchLine(1, "matched line") });
+
+        var batch = HitToLaunchItem.ConvertAll(hits, "본문", provider, CancellationToken.None, now);
+
+        Assert.Equal(hits.Length, batch.Count);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var single = HitToLaunchItem.Convert(hits[i], "본문", provider, now);
+            Assert.Equal(single.Item, batch[i].Item);           // LaunchItem is a record → value equality
+            Assert.Equal(single.Score, batch[i].Score);
+            Assert.Equal(single.ContentHit, batch[i].ContentHit);
+        }
+    }
+
+    [Fact]
+    public void ConvertAll_CanceledMidway_ThrowsOCE_StopsEarly()
+    {
+        var pathA = TempFile(".txt", "본문 A");
+        var pathB = TempFile(".txt", "본문 B");
+        var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
+        var cts = new CancellationTokenSource();
+        // Cancel while converting the FIRST hit → the per-hit check trips before hit 2.
+        var provider = new StubProvider(Array.Empty<MatchLine>()) { OnGetMatchLines = _ => cts.Cancel() };
+
+        Assert.Throws<OperationCanceledException>(
+            () => HitToLaunchItem.ConvertAll(hits, "q", provider, cts.Token, DateTime.Now));
+        Assert.True(provider.GetMatchLinesCalls <= 1,
+            $"second hit must not be converted (calls={provider.GetMatchLinesCalls})");
+    }
+
     /// <summary>Minimal <see cref="ISearchProvider"/> returning fixed match lines.</summary>
     private sealed class StubProvider : ISearchProvider
     {
         private readonly IReadOnlyList<MatchLine> _lines;
         public StubProvider(IReadOnlyList<MatchLine> lines) => _lines = lines;
 
+        /// <summary>Conversion-related call count (one <see cref="GetMatchLines"/> per converted hit).</summary>
+        public int GetMatchLinesCalls { get; private set; }
+        /// <summary>Optional hook invoked on each <see cref="GetMatchLines"/> call (e.g. to cancel mid-batch).</summary>
+        public Action<string>? OnGetMatchLines { get; init; }
+
         public IReadOnlyList<SearchHit> Search(string query, int limit = 50, int offset = 0)
             => Array.Empty<SearchHit>();
         public IReadOnlyList<MatchLine> GetMatchLines(string docId, string query, int maxLines = 5)
-            => _lines;
+        {
+            GetMatchLinesCalls++;
+            OnGetMatchLines?.Invoke(docId);
+            return _lines;
+        }
         public IReadOnlyDictionary<string, long> GetBundleSizes(IEnumerable<string> docIds)
             => new Dictionary<string, long>();
     }

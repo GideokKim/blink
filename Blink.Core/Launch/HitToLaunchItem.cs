@@ -55,6 +55,24 @@ public static class HitToLaunchItem
     public static LaunchResult Convert(SearchHit hit, string query, ISearchProvider provider)
         => Convert(hit, query, provider, DateTime.Now);
 
+    /// <summary>
+    /// Converts a batch of hits, checking <paramref name="ct"/> between items so a stale
+    /// query can be abandoned promptly — each <see cref="Convert(SearchHit,string,ISearchProvider,DateTime)"/>
+    /// does a file stat plus a provider (SQL) round-trip, so per-item cancellation matters.
+    /// </summary>
+    public static IReadOnlyList<LaunchResult> ConvertAll(
+        IReadOnlyList<SearchHit> hits, string query, ISearchProvider provider,
+        CancellationToken ct, DateTime? now = null)
+    {
+        var list = new List<LaunchResult>(hits.Count);
+        foreach (var hit in hits)
+        {
+            ct.ThrowIfCancellationRequested();   // hit당 stat+SQL이 비싸므로 매 건 사이 체크
+            list.Add(Convert(hit, query, provider, now ?? DateTime.Now));
+        }
+        return list;
+    }
+
     public static string? JoinMatchLines(IReadOnlyList<MatchLine> lines)
         => lines.Count == 0 ? null : string.Join("\n", lines.Select(l => l.Text));
 
