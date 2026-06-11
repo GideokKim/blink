@@ -290,6 +290,27 @@ public sealed class SqliteFtsStoreTests : IDisposable
         Assert.Equal(0L, bytes);
     }
 
+    // ---- Search metadata pass-through ----
+    [Fact]
+    public void Search_PopulatesSizeMtimeBundleFlag()
+    {
+        using var store = NewStore();
+        store.Upsert(new Document(DocId: "/s/file.txt", Path: "/s/file.txt",
+            Mtime: 1750000000, Size: 4300, Content: "한글검색 내용"));
+        store.Upsert(new Document(DocId: "/s/bundle.jpg", Path: "/s/bundle.jpg",
+            Mtime: 0, Size: 0, Content: "한글검색", IsBundle: true, MemberCount: 3));
+
+        var hits = store.Search("한글검색");
+
+        var file = hits.Single(h => h.DocId == "/s/file.txt");
+        Assert.Equal(4300L, file.Size);
+        Assert.Equal(1750000000d, file.Mtime);
+        Assert.False(file.IsBundle);
+
+        var bundle = hits.Single(h => h.DocId == "/s/bundle.jpg");
+        Assert.True(bundle.IsBundle);
+    }
+
     // ---- GetContents (batch) ----
     [Fact]
     public void GetContents_ReturnsOnlyExistingIds()

@@ -125,6 +125,54 @@ public sealed class HitToLaunchItemTests : IDisposable
         }
     }
 
+    // ---- Convert with DB metadata (no filesystem stat) ----
+    [Fact]
+    public void Convert_WithDbMetadata_DoesNotStat()
+    {
+        // Path deliberately does NOT exist on disk — populated size/mod below PROVE
+        // the conversion used the hit's DB metadata instead of a filesystem stat.
+        var path = Path.Combine(Path.GetTempPath(), $"blink_meta_{Guid.NewGuid():N}.txt");
+        var now = new DateTime(2026, 6, 9, 12, 0, 0, DateTimeKind.Local);
+        long mtime = new DateTimeOffset(now.AddMinutes(-3)).ToUnixTimeSeconds();
+        var hit = new SearchHit("doc-m", path, -1.0, Size: 4300, Mtime: mtime);
+        var provider = new StubProvider(Array.Empty<MatchLine>());
+
+        var result = HitToLaunchItem.Convert(hit, "q", provider, now);
+
+        Assert.Equal(LaunchItemKind.File, result.Item.Type);
+        Assert.Equal("4.2 KB", result.Item.Size);
+        Assert.Equal("3분 전", result.Item.Mod);
+    }
+
+    [Fact]
+    public void Convert_BundleHit_IsFolderKind_NoSizeMod()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"blink_bundle_{Guid.NewGuid():N}");
+        var hit = new SearchHit("doc-bn", path, -1.0, Size: 0, Mtime: 0, IsBundle: true);
+        var provider = new StubProvider(Array.Empty<MatchLine>());
+
+        var result = HitToLaunchItem.Convert(hit, "q", provider, DateTime.Now);
+
+        Assert.Equal(LaunchItemKind.Folder, result.Item.Type);
+        Assert.Null(result.Item.Size);
+        Assert.Null(result.Item.Mod);
+    }
+
+    [Fact]
+    public void Convert_LegacyHit_FallsBackToStat()
+    {
+        var path = TempFile(".txt", "본문");
+        var now = new DateTime(2026, 6, 9, 12, 0, 0, DateTimeKind.Local);
+        var hit = new SearchHit("doc-lg", path, -1.0); // no metadata → stat path
+        var provider = new StubProvider(Array.Empty<MatchLine>());
+
+        var result = HitToLaunchItem.Convert(hit, "q", provider, now);
+
+        Assert.Equal(LaunchItemKind.File, result.Item.Type);
+        Assert.NotNull(result.Item.Size); // from the FileInfo stat
+        Assert.NotNull(result.Item.Mod);
+    }
+
     // ---- ConvertAll ----
     [Fact]
     public void ConvertAll_MatchesPerHitConvert()

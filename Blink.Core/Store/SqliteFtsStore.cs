@@ -273,8 +273,11 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         lock (_readGate)
         {
             using var cmd = _readConn.CreateCommand();
+            // size/mtime/is_bundle ride along (already on the documents row — no extra
+            // join) so hit conversion can skip the per-file network stat.
             cmd.CommandText = @"
-                SELECT d.doc_id, d.path, bm25(documents_fts) AS score
+                SELECT d.doc_id, d.path, bm25(documents_fts) AS score,
+                       d.size, d.mtime, d.is_bundle
                 FROM documents_fts f
                 JOIN documents d ON d.rowid = f.rowid
                 WHERE documents_fts MATCH $m
@@ -287,7 +290,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
             var hits = new List<SearchHit>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                hits.Add(new SearchHit(reader.GetString(0), reader.GetString(1), reader.GetDouble(2)));
+                hits.Add(new SearchHit(reader.GetString(0), reader.GetString(1), reader.GetDouble(2),
+                    Size: reader.GetInt64(3), Mtime: reader.GetDouble(4),
+                    IsBundle: reader.GetInt64(5) != 0));
             return hits;
         }
     }

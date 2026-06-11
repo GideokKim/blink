@@ -6,9 +6,11 @@ namespace Blink.Core.Launch;
 
 /// <summary>
 /// Adapts a <see cref="SearchHit"/> (path + bm25 score from the real FTS index) into the
-/// launcher's display model <see cref="LaunchResult"/>. Size/modified-time come from a file
-/// stat; the body match-lines come from the provider and are stuffed into
-/// <see cref="LaunchItem.Content"/> so the existing snippet/preview logic works unchanged.
+/// launcher's display model <see cref="LaunchResult"/>. Size/modified-time prefer the DB
+/// metadata carried on the hit (no filesystem stat — critical on network drives) and fall
+/// back to a file stat for legacy hits; the body match-lines come from the provider and are
+/// stuffed into <see cref="LaunchItem.Content"/> so the existing snippet/preview logic works
+/// unchanged.
 /// </summary>
 public static class HitToLaunchItem
 {
@@ -21,28 +23,50 @@ public static class HitToLaunchItem
     private static LaunchResult Convert(SearchHit hit, string? content, DateTime now)
     {
         var path = hit.Path;
-        bool isDir = Directory.Exists(path);
-        var kind = isDir ? LaunchItemKind.Folder : LaunchItemKind.File;
+
+        LaunchItemKind kind;
+        string? size = null, mod = null;
+        if (hit.IsBundle)
+        {
+            // Bundles are indexed with Mtime/Size 0 (markers, not real files) — folder
+            // row with no size/mod, and never a filesystem touch.
+            kind = LaunchItemKind.Folder;
+        }
+        else if (hit is { Size: not null, Mtime: not null })
+        {
+            // DB metadata rides along with the hit → NO stat. On a network drive a
+            // stat is tens-to-hundreds of ms per hit; the index-time values are fine
+            // as display info (and still render when the drive is unreachable).
+            kind = LaunchItemKind.File;
+            size = FormatSize(hit.Size.Value);
+            mod = FormatRelative(
+                DateTimeOffset.FromUnixTimeSeconds((long)hit.Mtime.Value).LocalDateTime, now);
+        }
+        else
+        {
+            // Legacy hit without metadata — stat the filesystem as before.
+            bool isDir = Directory.Exists(path);
+            kind = isDir ? LaunchItemKind.Folder : LaunchItemKind.File;
+            if (!isDir)
+            {
+                try
+                {
+                    var fi = new FileInfo(path);
+                    if (fi.Exists)
+                    {
+                        size = FormatSize(fi.Length);
+                        mod = FormatRelative(fi.LastWriteTime, now);
+                    }
+                }
+                catch { /* permission / unreachable network path — leave null */ }
+            }
+        }
 
         var title = Path.GetFileName(path.TrimEnd('/', '\\'));
         if (string.IsNullOrEmpty(title)) title = path;
         var sub = Path.GetDirectoryName(path) ?? path;
-        var ext = isDir ? "" : Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
-
-        string? size = null, mod = null;
-        if (!isDir)
-        {
-            try
-            {
-                var fi = new FileInfo(path);
-                if (fi.Exists)
-                {
-                    size = FormatSize(fi.Length);
-                    mod = FormatRelative(fi.LastWriteTime, now);
-                }
-            }
-            catch { /* permission / unreachable network path — leave null */ }
-        }
+        var ext = kind == LaunchItemKind.Folder
+            ? "" : Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
 
         var item = new LaunchItem(
             Id: hit.DocId, Type: kind, Title: title, Sub: sub,
