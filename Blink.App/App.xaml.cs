@@ -2,12 +2,14 @@
 using System.Windows;
 using Blink.App.Interop;
 using Blink.App.Theming;
+using Blink.App.Update;
 using Blink.App.ViewModels;
 using Blink.Core.Config;
 using Blink.Core.Indexing;
 using Blink.Core.Launch;
 using Blink.Core.Search;
 using Blink.Core.Store;
+using Blink.Core.Update;
 using Forms = System.Windows.Forms;
 
 namespace Blink.App;
@@ -24,6 +26,8 @@ public partial class App : Application
     private AppConfig _config = new();
     private readonly IndexingStatusViewModel _status = new();
     private readonly Dictionary<string, DateTime> _pendingFolderTimes = new();
+    private UpdateService? _updates;
+    private ReleaseInfo? _pendingRelease;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -77,6 +81,15 @@ public partial class App : Application
 
         if (_config.Folders.Length > 0)
             StartReindex(_config.Folders);
+
+        // Auto-update: clear installers left by the previous update (they can't delete
+        // themselves while running), arm the 30 s + 24 h check, and show "새로워진 점"
+        // on the first launch after an update.
+        UpdateService.CleanupTempInstallers();
+        _updates = new UpdateService(_config);
+        _updates.UpdateAvailable += OnUpdateAvailable;
+        _updates.Start();
+        _ = ShowWhatsNewIfUpdatedAsync();
     }
 
     /// <summary>Begin a reindex and flip the shared status to "indexing".</summary>
@@ -170,7 +183,8 @@ public partial class App : Application
     {
         var win = new SettingsWindow(
             _config, _status,
-            root => _store is null ? (0L, 0L) : _store.FolderStats(root));
+            root => _store is null ? (0L, 0L) : _store.FolderStats(root),
+            QuitApp);
         win.ReindexRequested += folders => StartReindex(folders);
         win.SettingsSaved += OnSettingsSaved;
         win.Show();
@@ -186,8 +200,57 @@ public partial class App : Application
         _dirSync?.Invoke();
     }
 
+    /// <summary>Automatic check found an offerable release: balloon first, window on click.</summary>
+    private void OnUpdateAvailable(ReleaseInfo release)
+    {
+        _pendingRelease = release;
+        if (_tray is null) return;
+        _tray.BalloonTipClicked -= OnUpdateBalloonClicked; // re-arm idempotently per check
+        _tray.BalloonTipClicked += OnUpdateBalloonClicked;
+        _tray.ShowBalloonTip(10000, "Blink 업데이트",
+            $"Blink {release.Version} 업데이트가 있습니다. 클릭하면 자세히 볼 수 있어요.",
+            Forms.ToolTipIcon.Info);
+    }
+
+    private void OnUpdateBalloonClicked(object? sender, EventArgs e)
+    {
+        if (_pendingRelease is not null) ShowUpdateWindow(_pendingRelease);
+    }
+
+    private void ShowUpdateWindow(ReleaseInfo release)
+    {
+        var win = new UpdateWindow(release, _config, QuitApp);
+        win.Show();
+        win.Activate();
+    }
+
+    /// <summary>
+    /// last_seen_version과 현재 버전 비교. Show면 해당 태그의 릴리스 노트를 조회해 창을
+    /// 띄우고 갱신, 조회 실패(오프라인)면 갱신하지 않고 다음 시작에 재시도.
+    /// </summary>
+    private async Task ShowWhatsNewIfUpdatedAsync()
+    {
+        var current = UpdateService.CurrentVersion;
+        switch (WhatsNewGate.Decide(_config.LastSeenVersion, current))
+        {
+            case WhatsNewAction.InitializeOnly:
+                _config.LastSeenVersion = current;
+                _config.Save();
+                break;
+
+            case WhatsNewAction.Show:
+                var release = await UpdateService.FetchByTagAsync($"v{current}");
+                if (release is null) return; // offline — keep last_seen, retry next launch
+                new WhatsNewWindow(current, release.Body).Show();
+                _config.LastSeenVersion = current;
+                _config.Save();
+                break;
+        }
+    }
+
     private void QuitApp()
     {
+        _updates?.Dispose();
         _tray?.Dispose();
         _hotkey?.Dispose();
         _autoIndex?.Dispose();
