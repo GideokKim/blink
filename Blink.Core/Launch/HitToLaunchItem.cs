@@ -15,6 +15,10 @@ public static class HitToLaunchItem
     private const int DefaultHue = 250;
 
     public static LaunchResult Convert(SearchHit hit, string query, ISearchProvider provider, DateTime now)
+        => Convert(hit, JoinMatchLines(provider.GetMatchLines(hit.DocId, query, 5)), now);
+
+    /// <summary>Core conversion with the match-line content already fetched (batch path).</summary>
+    private static LaunchResult Convert(SearchHit hit, string? content, DateTime now)
     {
         var path = hit.Path;
         bool isDir = Directory.Exists(path);
@@ -40,8 +44,6 @@ public static class HitToLaunchItem
             catch { /* permission / unreachable network path — leave null */ }
         }
 
-        var content = JoinMatchLines(provider.GetMatchLines(hit.DocId, query, 5));
-
         var item = new LaunchItem(
             Id: hit.DocId, Type: kind, Title: title, Sub: sub,
             Glyph: GlyphFor(ext), Hue: HueFor(ext),
@@ -56,19 +58,24 @@ public static class HitToLaunchItem
         => Convert(hit, query, provider, DateTime.Now);
 
     /// <summary>
-    /// Converts a batch of hits, checking <paramref name="ct"/> between items so a stale
-    /// query can be abandoned promptly — each <see cref="Convert(SearchHit,string,ISearchProvider,DateTime)"/>
-    /// does a file stat plus a provider (SQL) round-trip, so per-item cancellation matters.
+    /// Converts a batch of hits. Match lines come from ONE
+    /// <see cref="ISearchProvider.GetMatchLinesMany"/> call for the whole page (instead of
+    /// a per-hit N+1 query), and <paramref name="ct"/> is checked between items so a stale
+    /// query can be abandoned promptly — each item still does a file stat.
     /// </summary>
     public static IReadOnlyList<LaunchResult> ConvertAll(
         IReadOnlyList<SearchHit> hits, string query, ISearchProvider provider,
         CancellationToken ct, DateTime? now = null)
     {
+        ct.ThrowIfCancellationRequested();
+        var lineMap = provider.GetMatchLinesMany(hits.Select(h => h.DocId), query, 5);
+
         var list = new List<LaunchResult>(hits.Count);
         foreach (var hit in hits)
         {
-            ct.ThrowIfCancellationRequested();   // hit당 stat+SQL이 비싸므로 매 건 사이 체크
-            list.Add(Convert(hit, query, provider, now ?? DateTime.Now));
+            ct.ThrowIfCancellationRequested();   // hit당 stat이 비싸므로 매 건 사이 체크
+            var lines = lineMap.TryGetValue(hit.DocId, out var l) ? l : Array.Empty<MatchLine>();
+            list.Add(Convert(hit, JoinMatchLines(lines), now ?? DateTime.Now));
         }
         return list;
     }

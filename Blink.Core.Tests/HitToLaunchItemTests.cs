@@ -154,13 +154,28 @@ public sealed class HitToLaunchItemTests : IDisposable
         var pathB = TempFile(".txt", "본문 B");
         var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
         var cts = new CancellationTokenSource();
-        // Cancel while converting the FIRST hit → the per-hit check trips before hit 2.
+        // Cancel while the batch line fetch sees the FIRST doc → the per-hit check
+        // trips before any hit is assembled (no stat work for either hit).
         var provider = new StubProvider(Array.Empty<MatchLine>()) { OnGetMatchLines = _ => cts.Cancel() };
 
         Assert.Throws<OperationCanceledException>(
             () => HitToLaunchItem.ConvertAll(hits, "q", provider, cts.Token, DateTime.Now));
-        Assert.True(provider.GetMatchLinesCalls <= 1,
-            $"second hit must not be converted (calls={provider.GetMatchLinesCalls})");
+        Assert.Equal(0, provider.GetMatchLinesCalls); // batch path — no per-doc round-trips
+    }
+
+    [Fact]
+    public void ConvertAll_CallsGetMatchLinesManyOnce()
+    {
+        var pathA = TempFile(".txt", "본문 A");
+        var pathB = TempFile(".md", "본문 B");
+        var hits = new[] { new SearchHit("doc-a", pathA, -2.5), new SearchHit("doc-b", pathB, -1.0) };
+        var provider = new StubProvider(new[] { new MatchLine(1, "m") });
+
+        var batch = HitToLaunchItem.ConvertAll(hits, "본문", provider, CancellationToken.None, DateTime.Now);
+
+        Assert.Equal(2, batch.Count);
+        Assert.Equal(1, provider.GetMatchLinesManyCalls); // ONE batched fetch for the page
+        Assert.Equal(0, provider.GetMatchLinesCalls);     // no per-hit N+1 fallback
     }
 
     /// <summary>Minimal <see cref="ISearchProvider"/> returning fixed match lines.</summary>
@@ -176,11 +191,27 @@ public sealed class HitToLaunchItemTests : IDisposable
 
         public IReadOnlyList<SearchHit> Search(string query, int limit = 50, int offset = 0)
             => Array.Empty<SearchHit>();
+        /// <summary>Batch call count (one per <see cref="HitToLaunchItem.ConvertAll"/> page).</summary>
+        public int GetMatchLinesManyCalls { get; private set; }
+
         public IReadOnlyList<MatchLine> GetMatchLines(string docId, string query, int maxLines = 5)
         {
             GetMatchLinesCalls++;
             OnGetMatchLines?.Invoke(docId);
             return _lines;
+        }
+
+        public IReadOnlyDictionary<string, IReadOnlyList<MatchLine>> GetMatchLinesMany(
+            IEnumerable<string> docIds, string query, int maxLines = 5)
+        {
+            GetMatchLinesManyCalls++;
+            var result = new Dictionary<string, IReadOnlyList<MatchLine>>();
+            foreach (var id in docIds)
+            {
+                OnGetMatchLines?.Invoke(id); // same hook so cancel-mid-batch is testable
+                result[id] = _lines;
+            }
+            return result;
         }
         public IReadOnlyDictionary<string, long> GetBundleSizes(IEnumerable<string> docIds)
             => new Dictionary<string, long>();

@@ -290,6 +290,23 @@ public sealed class SqliteFtsStoreTests : IDisposable
         Assert.Equal(0L, bytes);
     }
 
+    // ---- GetContents (batch) ----
+    [Fact]
+    public void GetContents_ReturnsOnlyExistingIds()
+    {
+        using var store = NewStore();
+        store.Upsert(Doc("/c/a.txt", "내용 A"));
+        store.Upsert(Doc("/c/b.txt", "내용 B"));
+
+        var map = store.GetContents(new[] { "/c/a.txt", "/c/b.txt", "/c/missing.txt" });
+
+        Assert.Equal(2, map.Count); // missing id omitted
+        Assert.Equal("내용 A", map["/c/a.txt"]);
+        Assert.Equal("내용 B", map["/c/b.txt"]);
+
+        Assert.Empty(store.GetContents(Array.Empty<string>())); // empty input → no SQL, empty dict
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

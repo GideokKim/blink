@@ -338,6 +338,39 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
     }
 
     /// <summary>
+    /// Batch variant of <see cref="GetContent"/> — one IN query for a whole result page
+    /// (≤ 50 ids per search, well within SQLite's 999-parameter limit). Missing ids are
+    /// omitted. Kills the per-hit N+1 content SELECTs during match-line extraction.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> GetContents(IEnumerable<string> docIds)
+    {
+        var ids = docIds as ICollection<string> ?? docIds.ToList();
+        var result = new Dictionary<string, string>();
+        if (ids.Count == 0)
+            return result;
+
+        lock (_readGate)
+        {
+            using var cmd = _readConn.CreateCommand();
+            // Parameterize each id ($p0,$p1,…) to keep it injection-safe.
+            var names = new List<string>(ids.Count);
+            int i = 0;
+            foreach (var id in ids)
+            {
+                var name = "$p" + i++;
+                names.Add(name);
+                cmd.Parameters.AddWithValue(name, id);
+            }
+            cmd.CommandText =
+                $"SELECT doc_id, content FROM documents WHERE doc_id IN ({string.Join(",", names)});";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result[reader.GetString(0)] = reader.GetString(1);
+        }
+        return result;
+    }
+
+    /// <summary>
     /// For each doc id that is a bundle entry, its member count. Non-bundle (or unknown)
     /// ids are omitted. Lets the UI annotate a hit like "folder of 12,430 images".
     /// </summary>
