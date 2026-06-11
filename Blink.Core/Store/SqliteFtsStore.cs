@@ -14,20 +14,23 @@ namespace Blink.Core.Store;
 /// in one transaction at the same rowid. <c>bm25(documents_fts)</c> ranks on the tokens
 /// column (lower = better); match-line extraction re-reads <c>documents.content</c>.
 ///
-/// Connection model: a single long-lived connection under WAL, shared by reads and
-/// writes. Because one connection is NOT safe for concurrent use (background indexing
-/// writes while the UI searches → "SQLite Error 21 (misuse)" / "database is locked"),
-/// every public operation is serialized through <c>_gate</c>. This trades a little
-/// read/write parallelism for crash-freedom — sufficient at the slice's data scale.
-/// (A future optimization is a dedicated read-only connection over WAL multi-reader.)
+/// Connection model: TWO long-lived connections under WAL. <c>_conn</c> (read-write)
+/// carries all writes plus <c>IterDocsUnder</c> (the indexer's own read), serialized by
+/// <c>_gate</c>; <c>_readConn</c> (read-only) carries the query surface — Search,
+/// GetContent, Count, FolderStats, GetBundleSizes — serialized by <c>_readGate</c>.
+/// A SqliteConnection is not safe for concurrent use, hence one gate per connection;
+/// but WAL readers never block on writers, so a search proceeds even while a long
+/// UpsertMany transaction holds <c>_gate</c> open (no UI freeze during indexing).
 /// </summary>
 public sealed class SqliteFtsStore : IIndexStore, IContentStore
 {
-    private readonly SqliteConnection _conn;
+    private readonly SqliteConnection _conn;     // read-write: all mutations + indexer reads
+    private readonly SqliteConnection _readConn; // read-only: query surface (WAL multi-reader)
 
-    // Serializes all connection access. SqliteConnection is not thread-safe, and the
-    // app drives writes (indexer) and reads (search) from different threads.
+    // One gate per connection. SqliteConnection is not thread-safe, and the app drives
+    // writes (indexer) and reads (search) from different threads.
     private readonly object _gate = new();
+    private readonly object _readGate = new();
 
     static SqliteFtsStore()
     {
@@ -52,6 +55,22 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         Exec("PRAGMA journal_mode=WAL;");
         Exec("PRAGMA synchronous=NORMAL;");
         InitSchema();
+
+        // Opened AFTER InitSchema: tables and the WAL files must exist before a
+        // ReadOnly open is safe.
+        _readConn = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            Mode = SqliteOpenMode.ReadOnly,
+        }.ToString());
+        _readConn.Open();
+        using (var cmd = _readConn.CreateCommand())
+        {
+            // Brief retry instead of an instant SQLITE_BUSY if a read lands on the
+            // exact moment of a WAL checkpoint.
+            cmd.CommandText = "PRAGMA busy_timeout=250;";
+            cmd.ExecuteNonQuery();
+        }
     }
 
     private void SelfTestFts5()
@@ -251,9 +270,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         // AND-join FTS5 phrase-quoted tokens; escape embedded double-quotes by doubling.
         var match = string.Join(" AND ", tokens.Select(t => "\"" + t.Replace("\"", "\"\"") + "\""));
 
-        lock (_gate)
+        lock (_readGate)
         {
-            using var cmd = _conn.CreateCommand();
+            using var cmd = _readConn.CreateCommand();
             cmd.CommandText = @"
                 SELECT d.doc_id, d.path, bm25(documents_fts) AS score
                 FROM documents_fts f
@@ -275,9 +294,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
 
     public int Count()
     {
-        lock (_gate)
+        lock (_readGate)
         {
-            using var cmd = _conn.CreateCommand();
+            using var cmd = _readConn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM documents;";
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
@@ -286,9 +305,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
     public (long FileCount, long TotalBytes) FolderStats(string root)
     {
         var prefix = Path.GetFullPath(root);
-        lock (_gate)
+        lock (_readGate)
         {
-            using var cmd = _conn.CreateCommand();
+            using var cmd = _readConn.CreateCommand();
             cmd.CommandText =
                 "SELECT COALESCE(SUM(CASE WHEN is_bundle=1 THEN member_count ELSE 1 END),0), COALESCE(SUM(size),0) " +
                 "FROM documents WHERE doc_id=$p OR doc_id LIKE $like;";
@@ -308,9 +327,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
     /// </summary>
     public string? GetContent(string docId)
     {
-        lock (_gate)
+        lock (_readGate)
         {
-            using var cmd = _conn.CreateCommand();
+            using var cmd = _readConn.CreateCommand();
             cmd.CommandText = "SELECT content FROM documents WHERE doc_id=$id;";
             cmd.Parameters.AddWithValue("$id", docId);
             var result = cmd.ExecuteScalar();
@@ -329,9 +348,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
         if (ids.Count == 0)
             return result;
 
-        lock (_gate)
+        lock (_readGate)
         {
-            using var cmd = _conn.CreateCommand();
+            using var cmd = _readConn.CreateCommand();
             // Parameterize each id ($p0,$p1,…) to keep it injection-safe.
             var names = new List<string>(ids.Count);
             int i = 0;
@@ -369,9 +388,12 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
 
     public void Dispose()
     {
+        _readConn.Close();
+        _readConn.Dispose();
         _conn.Close();
         _conn.Dispose();
-        // Connection pooling can keep the file handle alive; clear pools so temp DBs can be deleted in tests.
+        // Connection pooling can keep the file handle alive; clear ALL pools (covers
+        // both connections' pools) so temp DBs can be deleted in tests.
         SqliteConnection.ClearAllPools();
     }
 }
