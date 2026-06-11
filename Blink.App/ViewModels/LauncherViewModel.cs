@@ -16,6 +16,7 @@ public sealed class LauncherViewModel : ObservableObject
     private const int RealLimit = 50;
     private readonly IReadOnlyList<LaunchItem> _index;
     private readonly ISearchProvider? _provider;
+    private readonly SearchCoordinator _coordinator = new();
     private bool _useRealIndex;
 
     public LauncherViewModel(IReadOnlyList<LaunchItem> index, ISearchProvider? provider = null)
@@ -33,7 +34,7 @@ public sealed class LauncherViewModel : ObservableObject
         bool real = docCount >= 1 && _provider is not null;
         if (_useRealIndex == real) return;
         _useRealIndex = real;
-        UpdateResults();
+        _ = RefreshAsync();
     }
 
     public ObservableCollection<RowViewModel> Results { get; } = new();
@@ -46,7 +47,7 @@ public sealed class LauncherViewModel : ObservableObject
     public string Query
     {
         get => _query;
-        set { if (Set(ref _query, value ?? "")) UpdateResults(); }
+        set { if (Set(ref _query, value ?? "")) _ = RefreshAsync(); }
     }
 
     private int _selectedIndex = -1;
@@ -75,34 +76,73 @@ public sealed class LauncherViewModel : ObservableObject
 
     public bool HasSelection => Selected != null;
     public bool HasResults => Results.Count > 0;
-    public bool IsEmptyState => _query.Trim().Length > 0 && Results.Count == 0;
+    public bool IsEmptyState => !IsSearching && _query.Trim().Length > 0 && Results.Count == 0;
     public int ResultCount => Results.Count;
     public string ResultCountText => $"{Results.Count}건";
 
-    private void UpdateResults()
+    private bool _isSearching;
+    public bool IsSearching
+    {
+        get => _isSearching;
+        private set { if (Set(ref _isSearching, value)) Raise(nameof(IsEmptyState)); }
+    }
+
+    /// <summary>
+    /// 비동기 검색 파이프라인: 이전 검색을 즉시 취소(superseded)하고 백그라운드에서 검색한 뒤,
+    /// UI 스레드 재개 시 세대 검사를 통과한 결과만 적용한다. 검색 중에는 기존 결과를
+    /// 지우지 않아 blank-flash가 없고, 빈 쿼리는 즉시 비운다 (Escape 즉답).
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        var (gen, ct) = _coordinator.Begin();           // 이전 검색 즉시 취소
+        var q = _query.Trim();
+        bool real = _useRealIndex && _provider is not null;
+
+        IReadOnlyList<LaunchResult> rows;
+        if (q.Length == 0)
+        {
+            rows = Array.Empty<LaunchResult>();         // 빈 쿼리는 즉시 적용 (Escape 즉답)
+        }
+        else
+        {
+            IsSearching = true;
+            try
+            {
+                rows = await Task.Run(() => real
+                    ? HitToLaunchItem.ConvertAll(_provider!.Search(q, RealLimit, 0), q, _provider!, ct)
+                    : LaunchSearch.Search(q, _index), ct);
+            }
+            catch (OperationCanceledException) { return; }   // superseded — 최신 검색이 UI를 책임짐
+            catch (Exception ex)                              // 검색 실패 → 빈 결과 (앱 보호)
+            {
+                System.Diagnostics.Trace.WriteLine($"[Blink] search failed: {ex}");
+                rows = Array.Empty<LaunchResult>();
+            }
+        }
+
+        // await 재개 = WPF SynchronizationContext = UI 스레드.
+        // IsCurrent 검사 후 await 없이 곧장 적용 → stale 적용 경합 차단.
+        if (!_coordinator.IsCurrent(gen)) return;
+        ApplyResults(q, rows);
+        IsSearching = false;
+    }
+
+    /// <summary>UI 스레드 전용: 검색 결과를 Results/SelectedIndex에 반영하고 일괄 통지.</summary>
+    private void ApplyResults(string q, IReadOnlyList<LaunchResult> rows)
     {
         // Reset selection bookkeeping before rebuilding.
         _selectedIndex = -1;
         Results.Clear();
 
-        var q = _query.Trim();
         if (q.Length > 0)
         {
             var calc = LaunchSearch.TryCalc(q);
             if (calc is not null)
                 Results.Add(RowViewModel.ForCalc(calc));
-
-            if (_useRealIndex && _provider is not null)
-            {
-                foreach (var hit in _provider.Search(q, RealLimit, 0))
-                    Results.Add(new RowViewModel(HitToLaunchItem.Convert(hit, q, _provider), q));
-            }
-            else
-            {
-                foreach (var r in LaunchSearch.Search(q, _index))
-                    Results.Add(new RowViewModel(r, q));
-            }
         }
+
+        foreach (var r in rows)
+            Results.Add(new RowViewModel(r, q));
 
         if (Results.Count > 0)
         {
