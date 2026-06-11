@@ -159,6 +159,12 @@ public sealed class LauncherViewModel : ObservableObject
         Raise(nameof(ResultCountText));
     }
 
+    /// <summary>
+    /// Invalidate any in-flight search (e.g. when the launcher hides) so late
+    /// background results are never applied to the UI.
+    /// </summary>
+    public void CancelSearch() => _coordinator.CancelPending();
+
     /// <summary>↑/↓ navigation with wrap-around at both ends.</summary>
     public void MoveSelection(int delta)
     {
