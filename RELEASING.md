@@ -83,10 +83,33 @@ secret exists** (`env.SIGNING_ENABLED`), so nothing breaks before setup. One-tim
 3. In the SignPath portal, create the project and note the slugs. They must match the
    workflow (`.github/workflows/release.yml`):
    - `project-slug: blink`
-   - `signing-policy-slug: release-signing`
-   - two artifact configurations: `binaries` (the app + worker exes) and `installer`
-     (the Setup.exe). Adjust the slugs in the workflow if you name them differently.
-   - Add the **GitHub Actions** trusted build system / connector for this repo.
+   - `signing-policy-slug: release-signing` (a SignPath default policy slug)
+   - Add the predefined **GitHub.com** trusted build system to the org and link it to the
+     project, and install the **SignPath GitHub App** on the repo.
+   - Two **artifact configurations**. Because `actions/upload-artifact` zips its contents,
+     the root element is `<zip-file>` for both. Use a schema-aware editor; namespace is
+     `http://signpath.io/artifact-configuration/v1`.
+
+   Artifact configuration `binaries`:
+
+   ```xml
+   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+     <zip-file>
+       <pe-file path="Blink.App.exe"><authenticode-sign/></pe-file>
+       <pe-file path="Blink.Indexer.Worker.exe"><authenticode-sign/></pe-file>
+     </zip-file>
+   </artifact-configuration>
+   ```
+
+   Artifact configuration `installer` (the Setup name carries the version, hence the glob):
+
+   ```xml
+   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+     <zip-file>
+       <pe-file path="Blink-Setup-*.exe"><authenticode-sign/></pe-file>
+     </zip-file>
+   </artifact-configuration>
+   ```
 4. Add the credentials to the repo (**Settings → Secrets and variables → Actions**):
    - Secret `SIGNPATH_API_TOKEN` — your SignPath user/CI API token.
    - Variable `SIGNPATH_ORGANIZATION_ID` — your SignPath organization GUID.
