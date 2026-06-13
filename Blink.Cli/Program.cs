@@ -31,9 +31,10 @@ switch (cmd)
         var progress = new Progress<IndexProgress>(p =>
             Console.Write($"\rindexing {p.Processed}/{p.Total} ..."));
         var indexer = new Indexer();
-        // A drive root (L:\) is split into its child folders, each indexed independently.
-        foreach (var root in DriveSplit.Expand(folder))
-            indexer.Index(root, store, progress, CancellationToken.None);
+        // A large root (drive root / NAS share) is split into independently-committed chunks;
+        // exclusion rules stay anchored at `folder`. See RootExpander.
+        foreach (var chunk in RootExpander.Expand(folder))
+            indexer.Index(chunk.EnumRoot, folder, chunk.Recursive, store, progress, CancellationToken.None);
         Console.WriteLine($"\rdone. {store.Count()} documents indexed -> {cfg.DbPath}");
         return 0;
     }

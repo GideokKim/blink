@@ -50,17 +50,32 @@ public sealed class Indexer
         _bundleThreshold = bundleThreshold;
     }
 
+    /// <summary>
+    /// Backward-compatible entry: index <paramref name="root"/> recursively, anchoring exclusion
+    /// rules at <paramref name="root"/> itself. Equivalent to a single full-tree chunk.
+    /// </summary>
     public void Index(string root, IIndexStore store, IProgress<IndexProgress>? progress, CancellationToken ct)
+        => Index(root, root, recursive: true, store, progress, ct);
+
+    /// <summary>
+    /// Index the files under <paramref name="enumRoot"/> (a chunk from <see cref="RootExpander"/>),
+    /// evaluating exclusion rules relative to <paramref name="excludeRoot"/> (the user-configured
+    /// root) so chunking never changes WHAT gets indexed — a <c>.blinkignore</c> and root-relative
+    /// patterns at the configured root still apply to a deeper chunk. When <paramref name="recursive"/>
+    /// is false only the chunk's direct files are indexed (its subfolders belong to sibling chunks).
+    /// </summary>
+    public void Index(string enumRoot, string excludeRoot, bool recursive, IIndexStore store, IProgress<IndexProgress>? progress, CancellationToken ct)
     {
-        var excluder = _excluder ?? FileExcluder.ForRoot(root);
-        var rootFull = Path.GetFullPath(root);
+        var excluder = _excluder ?? FileExcluder.ForRoot(excludeRoot);
+        var rootFull = Path.GetFullPath(enumRoot);
+        var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
 
         // --- Pass 1: scan. One walk, spill paths to disk (no per-file stat yet). ---
         using var scan = new ScanCache();
-        foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        foreach (var path in Directory.EnumerateFiles(enumRoot, "*", searchOption))
         {
             ct.ThrowIfCancellationRequested();
-            if (!excluder.IsExcluded(path, root))
+            if (!excluder.IsExcluded(path, excludeRoot))
                 scan.Append(path);
         }
         scan.Seal();
@@ -91,7 +106,7 @@ public sealed class Indexer
         // Stored (doc_id → mtime); small once bundles collapse. Drives incremental skip
         // and bounds member deletions to entries that actually exist.
         var known = new Dictionary<string, long>(StringComparer.Ordinal);
-        foreach (var (docId, mtime) in store.IterDocsUnder(root))
+        foreach (var (docId, mtime) in store.IterDocsUnder(enumRoot))
             known[docId] = (long)mtime;
 
         // Drop bundle markers for groups that are no longer bundles.
