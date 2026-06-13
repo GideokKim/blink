@@ -34,7 +34,7 @@ jobs:
       SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-dotnet@v4
         with:
