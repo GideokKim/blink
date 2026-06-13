@@ -162,6 +162,8 @@ jobs:
         run: |
           $tag = '${{ steps.ver.outputs.tag }}'
           $body = gh release view $tag --json body --jq .body
-          $footer = "`n`n---`n`n☕ Blink가 시간을 아껴줬다면 [카카오페이로 커피 한 잔](https://qr.kakaopay.com/281006011000003981911022) 사주세요!"
+          # QR images are pinned to this tag's assets (immutable per release).
+          $base = "https://raw.githubusercontent.com/${{ github.repository }}/$tag/Blink.App/Assets"
+          $footer = "`n`n---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
           Set-Content -Path release-notes.md -Value ($body + $footer) -Encoding utf8
           gh release edit $tag --notes-file release-notes.md
