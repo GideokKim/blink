@@ -59,9 +59,42 @@ A manual run creates the tag at the current `main` commit.
 3. `dotnet test Blink.Core.Tests` — a failing test blocks the release.
 4. Publish `Blink.App` (self-contained, single file).
 5. Publish `Blink.Indexer.Worker` (self-contained, single file).
-6. Install Inno Setup (`choco install innosetup`).
-7. Compile `installer/blink.iss` with the tag version.
-8. Create the GitHub Release: auto-generated notes + `installer/Output/Blink-Setup-*.exe`.
+6. *(if signing is configured)* Sign the app + worker exes via SignPath — see
+   [Code signing](#code-signing-signpath).
+7. Install Inno Setup (`choco install innosetup`).
+8. Compile `installer/blink.iss` with the tag version.
+9. *(if signing is configured)* Sign the resulting `Blink-Setup-*.exe` via SignPath.
+10. Create the GitHub Release: auto-generated notes + `installer/Output/Blink-Setup-*.exe`.
+
+## Code signing (SignPath)
+
+Signed releases remove the **"Unknown publisher" / 알 수 없는 게시자** warning on the
+downloaded `Blink-Setup-*.exe` (Windows SmartScreen reputation still builds up separately
+as downloads accumulate). Blink uses [SignPath Foundation](https://signpath.org), which
+gives **free** code signing to OSS projects — this is why Blink is licensed under GPL-3.0.
+
+The workflow already contains the signing steps; they **stay dormant until the SignPath
+secret exists** (`env.SIGNING_ENABLED`), so nothing breaks before setup. One-time setup:
+
+1. **Enable MFA** on both your GitHub account and (next step) SignPath.
+2. **Apply** at <https://signpath.org> for the Foundation OSS program. Requirements are
+   already met: public repo, OSI license (GPL-3.0), and a published release. The certificate
+   is issued to **"SignPath Foundation"** — that becomes the displayed publisher.
+3. In the SignPath portal, create the project and note the slugs. They must match the
+   workflow (`.github/workflows/release.yml`):
+   - `project-slug: blink`
+   - `signing-policy-slug: release-signing`
+   - two artifact configurations: `binaries` (the app + worker exes) and `installer`
+     (the Setup.exe). Adjust the slugs in the workflow if you name them differently.
+   - Add the **GitHub Actions** trusted build system / connector for this repo.
+4. Add the credentials to the repo (**Settings → Secrets and variables → Actions**):
+   - Secret `SIGNPATH_API_TOKEN` — your SignPath user/CI API token.
+   - Variable `SIGNPATH_ORGANIZATION_ID` — your SignPath organization GUID.
+5. Cut a pre-release tag (e.g. `v0.1.0-rc1`) to verify the signed installer end-to-end
+   before a stable release.
+
+Once the secret is present the workflow signs the two exes **before** packaging and the
+final installer **after**, with no other changes needed.
 
 ## Release notes
 

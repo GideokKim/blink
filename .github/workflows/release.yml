@@ -26,6 +26,12 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    # Code signing turns on automatically once the SignPath secret is configured.
+    # Until then every signing step below is skipped and the release is published
+    # unsigned exactly as before — so this is safe to merge before SignPath is set up.
+    # See RELEASING.md → "Code signing (SignPath)" for the one-time setup.
+    env:
+      SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +75,44 @@ jobs:
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -p:Version=${{ steps.ver.outputs.version }}
 
+      # --- Sign the app + worker exes BEFORE packaging (so the installed binaries
+      #     are signed too). Inner files can't be signed after Inno Setup bundles them.
+      #     All three signing steps no-op unless SIGNING_ENABLED is true. ---
+      - name: Stage binaries for signing
+        if: env.SIGNING_ENABLED == 'true'
+        run: |
+          New-Item -ItemType Directory -Force sign-in/binaries | Out-Null
+          Copy-Item Blink.App/bin/Release/net8.0-windows/win-x64/publish/Blink.App.exe        sign-in/binaries/
+          Copy-Item Blink.Indexer.Worker/bin/Release/net8.0/win-x64/publish/Blink.Indexer.Worker.exe sign-in/binaries/
+
+      - name: Upload unsigned binaries
+        if: env.SIGNING_ENABLED == 'true'
+        id: artifact-binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-binaries
+          path: sign-in/binaries
+
+      - name: Sign binaries (SignPath)
+        if: env.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          # These three slugs must match what you define in the SignPath portal.
+          project-slug: blink
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.artifact-binaries.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: sign-out/binaries
+
+      - name: Copy signed binaries back into publish output
+        if: env.SIGNING_ENABLED == 'true'
+        run: |
+          Copy-Item sign-out/binaries/Blink.App.exe            Blink.App/bin/Release/net8.0-windows/win-x64/publish/ -Force
+          Copy-Item sign-out/binaries/Blink.Indexer.Worker.exe Blink.Indexer.Worker/bin/Release/net8.0/win-x64/publish/ -Force
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
@@ -77,6 +121,29 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           /DAppVersion=${{ steps.ver.outputs.version }}
           installer\blink.iss
+
+      # --- Sign the final installer. Output overwrites the unsigned Setup.exe in
+      #     installer/Output, so the release upload step below needs no changes. ---
+      - name: Upload unsigned installer
+        if: env.SIGNING_ENABLED == 'true'
+        id: artifact-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: installer/Output/Blink-Setup-*.exe
+
+      - name: Sign installer (SignPath)
+        if: env.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: blink
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.artifact-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: installer/Output
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
