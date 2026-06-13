@@ -1,0 +1,57 @@
+<!-- Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+     Reusable donation block: thank-you copy + KakaoPay / Toss QR codes.
+     Hosted inline in Settings and inside DonateWindow (tray / What's New). -->
+<UserControl x:Class="Blink.App.Controls.DonatePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{DynamicResource Blink.Sora}"
+             TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+    <StackPanel>
+        <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Blink.Txt}"
+                   HorizontalAlignment="Center" TextAlignment="Center">
+            <Run Text="☕ Blink가 시간을 아껴줬다면"/>
+        </TextBlock>
+        <TextBlock Text="커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다."
+                   FontSize="12" Foreground="{DynamicResource Blink.TxtDim}"
+                   HorizontalAlignment="Center" TextAlignment="Center"
+                   TextWrapping="Wrap" Margin="0,5,0,0"/>
+
+        <!-- QR cards -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+            <!-- KakaoPay -->
+            <StackPanel Margin="0,0,9,0">
+                <Border Background="#FFFFFF" CornerRadius="12" Padding="10"
+                        BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1">
+                    <Image Width="138" Height="138" Stretch="Uniform"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           Source="pack://application:,,,/Assets/donate-kakaopay.png"/>
+                </Border>
+                <TextBlock Text="카카오페이" FontSize="12.5" FontWeight="Medium"
+                           Foreground="{DynamicResource Blink.Txt}"
+                           HorizontalAlignment="Center" Margin="0,9,0,0"/>
+                <TextBlock HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="11.5">
+                    <Hyperlink x:Name="KakaoLink" Click="KakaoLink_Click"
+                               Foreground="{DynamicResource Blink.Accent}" TextDecorations="None">
+                        <Run Text="링크로 보내기 →"/>
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
+            <!-- Toss (scan-only: supertoss:// deep link doesn't open from desktop) -->
+            <StackPanel Margin="9,0,0,0">
+                <Border Background="#FFFFFF" CornerRadius="12" Padding="10"
+                        BorderBrush="{DynamicResource Blink.Hairline}" BorderThickness="1">
+                    <Image Width="138" Height="138" Stretch="Uniform"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           Source="pack://application:,,,/Assets/donate-toss.png"/>
+                </Border>
+                <TextBlock Text="토스" FontSize="12.5" FontWeight="Medium"
+                           Foreground="{DynamicResource Blink.Txt}"
+                           HorizontalAlignment="Center" Margin="0,9,0,0"/>
+                <TextBlock Text="폰으로 스캔" FontSize="11.5"
+                           Foreground="{DynamicResource Blink.TxtFaint}"
+                           HorizontalAlignment="Center" Margin="0,2,0,0"/>
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

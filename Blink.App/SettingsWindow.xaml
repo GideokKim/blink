@@ -601,6 +601,12 @@
                                       Data="M10.5,2.5 L13.5,5.5 L6,13 L2.5,13.5 L3,10 Z"/>
                             </Button>
                         </Grid>
+
+                        <!-- ── Support / donation ───────────────────────────────────── -->
+                        <Border Height="1" Background="{DynamicResource Blink.Hairline}" Margin="0,26,0,0"/>
+                        <TextBlock Text="SUPPORT" FontFamily="{DynamicResource Blink.Mono}" FontSize="10.5"
+                                   Foreground="{DynamicResource Blink.Accent}" Margin="0,26,0,16"/>
+                        <ctrl:DonatePanel/>
                     </StackPanel>
                 </ScrollViewer>
 

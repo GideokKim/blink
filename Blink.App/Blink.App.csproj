@@ -24,6 +24,9 @@
   <ItemGroup>
     <!-- Embedded so the tray (NotifyIcon) and Settings window load it via pack:// at runtime. -->
     <Resource Include="blink.ico" />
+    <!-- Donation QR codes shown in the Settings / Donate panels (pack:// at runtime). -->
+    <Resource Include="Assets\donate-kakaopay.png" />
+    <Resource Include="Assets\donate-toss.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Blink.Core\Blink.Core.csproj" />

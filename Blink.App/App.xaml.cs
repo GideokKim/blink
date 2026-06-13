@@ -153,6 +153,7 @@ public partial class App : Application
 
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("테마 전환 (다크/라이트)", null, (_, _) => ToggleTheme());
+        menu.Items.Add("☕ 후원하기", null, (_, _) => ShowDonate());
 
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => QuitApp());
@@ -189,6 +190,18 @@ public partial class App : Application
         win.SettingsSaved += OnSettingsSaved;
         win.Show();
         win.Activate();
+    }
+
+    private DonateWindow? _donate;
+
+    /// <summary>Open (or re-focus) the donation window. Reused by the tray menu and What's New.</summary>
+    private void ShowDonate()
+    {
+        if (_donate is { IsLoaded: true }) { _donate.Activate(); return; }
+        _donate = new DonateWindow();
+        _donate.Closed += (_, _) => _donate = null;
+        _donate.Show();
+        _donate.Activate();
     }
 
     /// <summary>Apply settings the user just saved: re-arm the auto-index cadence, sync layout, sync the tray.</summary>

@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/GideokKim/blink?label=release)](https://github.com/GideokKim/blink/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE.ko.md)
-[![커피 한 잔 사주기](https://img.shields.io/badge/%E2%98%95%20%EC%BB%A4%ED%94%BC%20%ED%95%9C%20%EC%9E%94%20%EC%82%AC%EC%A3%BC%EA%B8%B0-%EC%B9%B4%EC%B9%B4%EC%98%A4%ED%8E%98%EC%9D%B4-FFCD00?logo=kakaotalk&logoColor=black)](https://qr.kakaopay.com/Ej7nHHsn0)
+[![커피 한 잔 사주기](https://img.shields.io/badge/%E2%98%95%20%EC%BB%A4%ED%94%BC%20%ED%95%9C%20%EC%9E%94%20%EC%82%AC%EC%A3%BC%EA%B8%B0-%EC%B9%B4%EC%B9%B4%EC%98%A4%ED%8E%98%EC%9D%B4-FFCD00?logo=kakaotalk&logoColor=black)](https://qr.kakaopay.com/281006011000003981911022)
 
 > **파일 이름이 기억나지 않아도 괜찮아요. 내용 한 조각만 기억나면 됩니다.**
 
@@ -130,4 +130,4 @@ dotnet run --project Blink.Cli -- status                 # DB 경로, 문서 수
 
 Blink가 시간을 아껴줬다면 커피 한 잔으로 응원해주세요. ☕
 
-[☕ 카카오페이로 커피 한 잔 사주기](https://qr.kakaopay.com/Ej7nHHsn0)
+[☕ 카카오페이로 커피 한 잔 사주기](https://qr.kakaopay.com/281006011000003981911022)
