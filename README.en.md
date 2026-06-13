@@ -1,7 +1,7 @@
 # Blink
 
 [![Release](https://img.shields.io/github/v/release/GideokKim/blink?label=release)](https://github.com/GideokKim/blink/releases/latest)
-[![License](https://img.shields.io/badge/license-source--available-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Buy me a coffee](https://img.shields.io/badge/%E2%98%95%20buy%20me%20a%20coffee-KakaoPay-FFCD00?logo=kakaotalk&logoColor=black)](https://qr.kakaopay.com/Ej7nHHsn0)
 
 A Korean-friendly instant-search desktop launcher — press **Left Alt + Space**, type, and
@@ -75,10 +75,11 @@ platform equivalent.
 
 ## License
 
-**Source-available, free to use** — anyone may install and use Blink for free,
-including at work. The source is published for transparency and security review,
-but modifying it, reusing it in other software, or redistributing the source is
-not permitted. See [LICENSE](LICENSE) ([한국어](LICENSE.ko.md)).
+**GPL-3.0 open source** — Blink is distributed under the
+[GNU General Public License v3.0](LICENSE). Anyone may install, use, study, modify,
+and redistribute it for free. If you distribute a modified version or a derivative,
+you must release it under the same GPL-3.0 with its source (copyleft).
+See [LICENSE](LICENSE) ([한국어 안내](LICENSE.ko.md)).
 
 If Blink saves you time, you can buy me a coffee — see the
 [Korean README](README.md#라이선스) for the support link. ☕

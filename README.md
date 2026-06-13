@@ -1,7 +1,7 @@
 # Blink
 
 [![Release](https://img.shields.io/github/v/release/GideokKim/blink?label=release)](https://github.com/GideokKim/blink/releases/latest)
-[![License](https://img.shields.io/badge/license-source--available-blue)](LICENSE.ko.md)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE.ko.md)
 [![커피 한 잔 사주기](https://img.shields.io/badge/%E2%98%95%20%EC%BB%A4%ED%94%BC%20%ED%95%9C%20%EC%9E%94%20%EC%82%AC%EC%A3%BC%EA%B8%B0-%EC%B9%B4%EC%B9%B4%EC%98%A4%ED%8E%98%EC%9D%B4-FFCD00?logo=kakaotalk&logoColor=black)](https://qr.kakaopay.com/Ej7nHHsn0)
 
 > **파일 이름이 기억나지 않아도 괜찮아요. 내용 한 조각만 기억나면 됩니다.**
@@ -123,10 +123,10 @@ dotnet run --project Blink.Cli -- status                 # DB 경로, 문서 수
 
 ## 라이선스
 
-**소스 공개, 무료 사용** — 누구나 (직장에서의 업무 사용을 포함해) Blink를 무료로
-설치하고 사용할 수 있습니다. 소스 코드는 투명성과 보안 검토를 위해 공개되어
-있지만, 수정하거나 다른 소프트웨어에 재사용하거나 소스를 재배포하는 것은
-허용되지 않습니다. 자세한 내용: [LICENSE](LICENSE) ([한국어 번역](LICENSE.ko.md))
+**GPL-3.0 오픈소스** — Blink는 [GNU General Public License v3.0](LICENSE) 하에
+배포됩니다. 누구나 무료로 설치·사용하고, 소스를 열람·수정·재배포할 수 있습니다.
+다만 수정본이나 파생물을 배포할 때는 **같은 GPL-3.0으로 소스와 함께 공개**해야
+합니다(카피레프트). 자세한 내용: [LICENSE](LICENSE) ([한국어 안내](LICENSE.ko.md))
 
 Blink가 시간을 아껴줬다면 커피 한 잔으로 응원해주세요. ☕
 
