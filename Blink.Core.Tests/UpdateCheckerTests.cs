@@ -52,6 +52,48 @@ public sealed class UpdateCheckerTests
     }
 
     [Fact]
+    public async Task FetchLatest_PrefersCdnManifest_WhenAvailable()
+    {
+        const string manifest = """
+            {
+              "version": "2.0.0",
+              "tag": "v2.0.0",
+              "notes": "## Manifest notes\n* faster",
+              "installerName": "Blink-Setup-2.0.0.exe",
+              "installerUrl": "https://github.com/GideokKim/blink/releases/download/v2.0.0/Blink-Setup-2.0.0.exe"
+            }
+            """;
+        // CDN host serves the manifest; the REST API errors — so a parsed result proves
+        // the manifest path was used (and the API was not relied upon).
+        var stub = new StubHandler(req => req.RequestUri!.Host == "github.com"
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(manifest) }
+            : new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        using var checker = new UpdateChecker(stub);
+        var r = await checker.FetchLatestAsync();
+
+        Assert.NotNull(r);
+        Assert.Equal("v2.0.0", r!.TagName);
+        Assert.Equal("2.0.0", r.Version.ToString());
+        Assert.StartsWith("## Manifest notes", r.Body);
+        Assert.Equal("Blink-Setup-2.0.0.exe", r.InstallerName);
+    }
+
+    [Fact]
+    public async Task FetchLatest_FallsBackToApi_WhenManifestMissing()
+    {
+        // CDN manifest 404s (e.g. a release cut before the manifest existed) → REST API used.
+        var stub = new StubHandler(req => req.RequestUri!.Host == "github.com"
+            ? new HttpResponseMessage(HttpStatusCode.NotFound)
+            : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(FullRelease) });
+        using var checker = new UpdateChecker(stub);
+        var r = await checker.FetchLatestAsync();
+
+        Assert.NotNull(r);
+        Assert.Equal("v1.2.3", r!.TagName);
+        Assert.Equal("Blink-Setup-1.2.3.exe", r.InstallerName);
+    }
+
+    [Fact]
     public async Task FetchLatest_CallsLatestEndpoint_WithUserAgent()
     {
         var stub = Json(FullRelease);

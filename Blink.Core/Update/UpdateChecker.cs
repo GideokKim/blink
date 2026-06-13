@@ -11,9 +11,11 @@ namespace Blink.Core.Update;
 public sealed class UpdateChecker : IDisposable
 {
     private readonly HttpClient _http;
+    private readonly string _repo;
 
     public UpdateChecker(HttpMessageHandler? handler = null, string repo = "GideokKim/blink")
     {
+        _repo = repo;
         _http = handler is null ? new HttpClient() : new HttpClient(handler);
         _http.BaseAddress = new Uri($"https://api.github.com/repos/{repo}/");
         _http.Timeout = TimeSpan.FromSeconds(15);
@@ -22,9 +24,48 @@ public sealed class UpdateChecker : IDisposable
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
     }
 
-    /// <summary>Latest stable release (the API excludes pre-releases), or null on any failure.</summary>
-    public Task<ReleaseInfo?> FetchLatestAsync(CancellationToken ct = default) =>
-        FetchAsync("releases/latest", ct);
+    /// <summary>
+    /// Latest stable release, or null on any failure. Prefers the CDN-served
+    /// <c>latest.json</c> manifest (served by github.com release downloads, which are NOT
+    /// subject to the 60-request/hour unauthenticated REST API limit); falls back to the
+    /// REST API when the manifest is missing/unreadable (e.g. releases cut before it existed).
+    /// </summary>
+    public async Task<ReleaseInfo?> FetchLatestAsync(CancellationToken ct = default) =>
+        await FetchManifestAsync(ct).ConfigureAwait(false)
+        ?? await FetchAsync("releases/latest", ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// Read the latest-release manifest from the stable CDN URL
+    /// (<c>/releases/latest/download/latest.json</c>, which always redirects to the latest
+    /// stable release's asset). Null on any failure so the caller falls back to the API.
+    /// </summary>
+    private async Task<ReleaseInfo?> FetchManifestAsync(CancellationToken ct)
+    {
+        try
+        {
+            var url = $"https://github.com/{_repo}/releases/latest/download/latest.json";
+            using var rsp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!rsp.IsSuccessStatusCode) return null;
+
+            var json = await rsp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var dto = JsonSerializer.Deserialize<ManifestDto>(json);
+            var tag = dto?.Tag ?? (dto?.Version is { } v ? $"v{v}" : null);
+            if (tag is null || !SemVer.TryParse(tag, out var version)) return null;
+
+            return new ReleaseInfo
+            {
+                Version = version!,
+                TagName = tag,
+                Body = dto!.Notes ?? "",
+                InstallerUrl = dto.InstallerUrl,
+                InstallerName = dto.InstallerName,
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>Release for a specific tag (e.g. "v1.2.3"), or null on any failure.</summary>
     public Task<ReleaseInfo?> FetchByTagAsync(string tag, CancellationToken ct = default) =>
@@ -63,6 +104,16 @@ public sealed class UpdateChecker : IDisposable
     }
 
     public void Dispose() => _http.Dispose();
+
+    /// <summary>Shape of the CDN <c>latest.json</c> manifest published by the release workflow.</summary>
+    private sealed class ManifestDto
+    {
+        [JsonPropertyName("tag")] public string? Tag { get; set; }
+        [JsonPropertyName("version")] public string? Version { get; set; }
+        [JsonPropertyName("notes")] public string? Notes { get; set; }
+        [JsonPropertyName("installerName")] public string? InstallerName { get; set; }
+        [JsonPropertyName("installerUrl")] public string? InstallerUrl { get; set; }
+    }
 
     private sealed class ReleaseDto
     {

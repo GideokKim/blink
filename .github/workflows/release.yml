@@ -154,16 +154,35 @@ jobs:
           prerelease: ${{ steps.ver.outputs.prerelease }}
           files: installer/Output/Blink-Setup-*.exe
 
-      # The REST API prepends a custom body *above* generated notes, so append the
-      # support footer in a separate edit instead.
-      - name: Append support footer to release notes
+      # Publish the in-app update manifest (CDN-served, avoids the REST API rate limit)
+      # and append the web-only donation footer. Runs after the release exists.
+      - name: Publish update manifest + support footer
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = '${{ steps.ver.outputs.tag }}'
-          $body = gh release view $tag --json body --jq .body
-          # QR images are pinned to this tag's assets (immutable per release).
-          $base = "https://raw.githubusercontent.com/${{ github.repository }}/$tag/Blink.App/Assets"
-          $footer = "`n`n---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
+          $tag  = '${{ steps.ver.outputs.tag }}'
+          $ver  = '${{ steps.ver.outputs.version }}'
+          $repo = '${{ github.repository }}'
+          # Clean auto-generated notes as a single string (footer added separately below).
+          $body = (gh release view $tag --json body --jq .body | Out-String).TrimEnd()
+
+          # latest.json — read by the in-app updater via the stable CDN URL
+          # https://github.com/<repo>/releases/latest/download/latest.json, which always
+          # redirects to the latest *stable* release's asset (not the 60/h REST API).
+          $installerName = "Blink-Setup-$ver.exe"
+          $manifest = [ordered]@{
+            version       = $ver
+            tag           = $tag
+            notes         = $body
+            installerName = $installerName
+            installerUrl  = "https://github.com/$repo/releases/download/$tag/$installerName"
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path latest.json -Encoding utf8
+          gh release upload $tag latest.json --clobber
+
+          # Donation footer (QR) — WEB release notes only. The <!--BLINK_NOTES_END--> sentinel
+          # lets the in-app renderer drop it (MarkdownLite can't render the table/img).
+          $base = "https://raw.githubusercontent.com/$repo/$tag/Blink.App/Assets"
+          $footer = "`n`n<!--BLINK_NOTES_END-->`n`n---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
           Set-Content -Path release-notes.md -Value ($body + $footer) -Encoding utf8
           gh release edit $tag --notes-file release-notes.md

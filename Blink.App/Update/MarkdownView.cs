@@ -13,9 +13,18 @@ namespace Blink.App.Update;
 /// </summary>
 public static class MarkdownView
 {
+    /// <summary>Marks the start of the web-only donation footer appended by the release pipeline.</summary>
+    private const string FooterSentinel = "<!--BLINK_NOTES_END-->";
+
     public static void Render(StackPanel target, string markdown)
     {
         target.Children.Clear();
+
+        // Drop the web-only donation footer (QR table / HTML) — MarkdownLite would render
+        // its table/img markup as raw text. In-app donation is shown via DonatePanel instead.
+        int cut = markdown?.IndexOf(FooterSentinel, StringComparison.Ordinal) ?? -1;
+        if (cut >= 0) markdown = markdown![..cut];
+
         var blocks = MarkdownLite.Parse(markdown);
         if (blocks.Count == 0)
         {
