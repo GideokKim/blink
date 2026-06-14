@@ -38,8 +38,11 @@ README 최상단에 넣을 **히어로 GIF**(5~8초 루프)의 녹화·제작 �
 | `IMG_4821.jpg` | (이미지, 매치 없음) | 정확도 대비 |
 
 준비 방법:
-- Office 4개 문서는 직접 만들어 위 문장을 본문에 붙여 넣으면 됩니다(각 1줄, 2분이면 충분).
-- `.hwpx` 는 한컴오피스에서 같은 문장으로 저장합니다.
+- `.docx` · `.pptx` · `.xlsx` 는 정식 OOXML 구조가 필요하므로 **MS Office 또는
+  LibreOffice/구글독스**(무료)로 만들어 위 문장을 본문에 붙여 넣습니다(각 1줄, 2분).
+- **`.hwpx` 는 한컴오피스가 없어도 됩니다.** Blink의 `HwpxParser` 는 zip 속
+  `Contents/*.xml` 의 텍스트 노드만 읽으므로, 아래 PowerShell 스니펫으로 검색어가 든
+  최소 hwpx 를 만들면 정상 인덱싱됩니다(데모에선 결과·미리보기로만 보이고 열지 않음).
 - `.txt` 는 메모장으로 아무 내용. `.jpg` 는 아무 이미지 한 장.
 - 파일명에 "3분기"나 "매출"이 **들어가지 않도록** 주의(본문 검색임을 증명하는 핵심).
 
@@ -68,10 +71,26 @@ $png = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC
 Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -match '3분기|매출' } |
   ForEach-Object { Write-Warning "파일명에 검색어 포함됨: $($_.Name)" }
 
-Write-Host "데모 폴더 준비 완료: $root  (Office/hwpx 4개 문서는 수동으로 추가)"
+# --- .hwpx 생성 (한컴오피스 불필요) ---
+# HwpxParser 는 zip 속 Contents/*.xml 의 텍스트 노드만 읽으므로, 검색어가 든 문장을
+# 담은 Contents/section0.xml 하나면 충분하다.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$hwpx = "$root\보고서_초안.hwpx"
+$sentence = '3분기 매출 추이와 지역별 편차를 분석한다.'
+if (Test-Path $hwpx) { Remove-Item $hwpx }
+$zip = [System.IO.Compression.ZipFile]::Open($hwpx, 'Create')
+try {
+  $entry  = $zip.CreateEntry('Contents/section0.xml')
+  $writer = New-Object System.IO.StreamWriter($entry.Open(), (New-Object System.Text.UTF8Encoding($false)))
+  $writer.Write("<?xml version=`"1.0`" encoding=`"UTF-8`"?><sec><p><t>$sentence</t></p></sec>")
+  $writer.Dispose()
+} finally { $zip.Dispose() }
+
+Write-Host "데모 폴더 준비 완료: $root  (.docx/.pptx/.xlsx 3개만 수동 추가)"
 ```
 
-> 직접 만드는 4개 문서에 넣을 문장은 위 표를 그대로 복사해 붙여 넣으세요.
+> 직접 만드는 Office 3개 문서(`.docx`/`.pptx`/`.xlsx`)에 넣을 문장은 위 표를 그대로
+> 복사해 붙여 넣으세요. `.hwpx`·`.txt`·`.jpg` 는 위 스니펫이 자동 생성합니다.
 
 ## 3. 녹화·제작 사양
 
@@ -112,7 +131,8 @@ Write-Host "데모 폴더 준비 완료: $root  (Office/hwpx 4개 문서는 수�
 
 ## 5. 체크리스트
 
-- [ ] 데모 폴더 6개 파일 생성(본문 문장 심기, 파일명에 검색어 미포함)
+- [ ] PowerShell 스니펫 실행(폴더 + `.hwpx`/`.txt`/`.jpg` 자동 생성)
+- [ ] `.docx`/`.pptx`/`.xlsx` 3개를 표의 문장으로 만들어 데모 폴더에 추가(파일명에 검색어 미포함)
 - [ ] 설정에서 데모 폴더 인덱싱 추가 + 인덱싱 완료 대기
 - [ ] 배경/알림 정리 후 ScreenToGif로 스토리보드대로 녹화
 - [ ] 5–8초로 트림, 시작/끝 프레임 정리, 3MB 이하로 최적화
