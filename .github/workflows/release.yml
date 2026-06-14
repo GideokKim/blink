@@ -34,9 +34,9 @@ jobs:
       SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
@@ -88,7 +88,7 @@ jobs:
       - name: Upload unsigned binaries
         if: env.SIGNING_ENABLED == 'true'
         id: artifact-binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-binaries
           path: sign-in/binaries
@@ -127,7 +127,7 @@ jobs:
       - name: Upload unsigned installer
         if: env.SIGNING_ENABLED == 'true'
         id: artifact-installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-installer
           path: installer/Output/Blink-Setup-*.exe
@@ -146,7 +146,7 @@ jobs:
           output-artifact-directory: installer/Output
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Blink ${{ steps.ver.outputs.tag }}
