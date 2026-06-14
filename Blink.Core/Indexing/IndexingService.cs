@@ -51,13 +51,22 @@ public sealed class IndexingService : IDisposable
 
                     try
                     {
-                        _indexer.Index(folder, store, progress, ct);
+                        // Expand a configured folder into independently-committed chunks (a drive
+                        // root / NAS share becomes many) so an interrupted run keeps completed
+                        // chunks. Expansion stays INSIDE this loop: FolderCompleted fires once per
+                        // CONFIGURED folder, keeping folder_index_times keyed by the user's roots.
+                        foreach (var chunk in RootExpander.Expand(folder))
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            _indexer.Index(chunk.EnumRoot, folder, chunk.Recursive, store, progress, ct);
 
-                        // Remove entries for files deleted since the last run. Guarded against
-                        // a vanished root (RootUnavailableException) so a transient mount drop
-                        // can't purge the index.
-                        try { pruner.Apply(folder, store); }
-                        catch (RootUnavailableException) { /* skip prune for this root */ }
+                            // Remove entries for files deleted since the last run. Guarded against
+                            // a vanished chunk (RootUnavailableException) so a transient mount drop
+                            // can't purge the index — applied per chunk, so one dropped share
+                            // doesn't skip pruning its siblings.
+                            try { pruner.Apply(chunk.EnumRoot, store); }
+                            catch (RootUnavailableException) { /* skip prune for this chunk */ }
+                        }
 
                         FolderCompleted?.Invoke(folder);
                     }
