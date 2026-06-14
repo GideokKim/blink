@@ -10,6 +10,11 @@ SQLite FTS5 engine and a WPF spotlight UI.
 
 > 🌐 Languages: **English** · [한국어](README.md)
 
+<p align="center">
+  <img src="docs/assets/blink-search.gif" alt="Blink full-text search demo — summon with Left Alt+Space and find a document by a fragment of its content" width="760">
+</p>
+<p align="center"><sub>Left Alt + Space → type a fragment of the content and the document surfaces instantly.</sub></p>
+
 > Status: the search **engine** (`Blink.Core`) and the **indexer worker** are fully
 > implemented and unit-tested (103 tests) cross-platform. The **WPF app** (`Blink.App`)
 > targets `net8.0-windows` and must be built and verified on Windows — see

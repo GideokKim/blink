@@ -12,7 +12,10 @@ Windows 검색 런처입니다. 한글 검색에 강하고, 문서 수백만 개
 
 > 🌐 Languages: [English](README.en.md) · **한국어**
 
-<!-- TODO: 스포트라이트 검색 GIF/스크린샷 -->
+<p align="center">
+  <img src="docs/assets/blink-search.gif" alt="Blink 본문 검색 데모 — 왼쪽 Alt+Space로 띄워 내용 한 조각으로 문서를 찾는 모습" width="760">
+</p>
+<p align="center"><sub>왼쪽 Alt + Space → 내용 한 조각만 입력하면 문서가 바로 떠오릅니다.</sub></p>
 
 ## 📥 설치 — 30초면 충분해요
 
