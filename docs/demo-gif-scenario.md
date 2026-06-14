@@ -43,6 +43,36 @@ README 최상단에 넣을 **히어로 GIF**(5~8초 루프)의 녹화·제작 �
 - `.txt` 는 메모장으로 아무 내용. `.jpg` 는 아무 이미지 한 장.
 - 파일명에 "3분기"나 "매출"이 **들어가지 않도록** 주의(본문 검색임을 증명하는 핵심).
 
+### 폴더·텍스트 파일 자동 생성 (PowerShell)
+
+폴더 구조와 `.txt`·`.jpg` 자리표시자는 아래 스니펫으로 한 번에 만들 수 있습니다.
+Office/hwpx 4개 문서만 직접 만들어 같은 폴더에 넣으면 됩니다.
+
+```powershell
+# 데모 폴더 생성 (NAS 느낌을 주려면 $root 를 'L:\공유문서' 등으로 변경)
+$root = 'C:\BlinkDemo'
+New-Item -ItemType Directory -Force -Path $root, "$root\사진모음" | Out-Null
+
+# 검색어가 없는 잡음용 .txt (제외/정확도 대비용)
+@'
+오늘 점심은 김치찌개와 제육볶음.
+내일은 회식 장소를 정해야 한다.
+'@ | Set-Content -Path "$root\점심메뉴.txt" -Encoding utf8
+
+# 이미지 자리표시자 (실제 사진으로 교체해도 됨)
+$png = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+[IO.File]::WriteAllBytes("$root\IMG_4821.jpg", $png)
+[IO.File]::WriteAllBytes("$root\사진모음\IMG_4822.jpg", $png)
+
+# 검증: 파일명에 "3분기"나 "매출"이 들어간 게 없어야 함(본문 검색 증명)
+Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -match '3분기|매출' } |
+  ForEach-Object { Write-Warning "파일명에 검색어 포함됨: $($_.Name)" }
+
+Write-Host "데모 폴더 준비 완료: $root  (Office/hwpx 4개 문서는 수동으로 추가)"
+```
+
+> 직접 만드는 4개 문서에 넣을 문장은 위 표를 그대로 복사해 붙여 넣으세요.
+
 ## 3. 녹화·제작 사양
 
 - **툴**: [ScreenToGif](https://www.screentogif.com/) — 무료, Windows, 영역 녹화 → GIF
