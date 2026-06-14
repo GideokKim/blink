@@ -34,7 +34,11 @@ jobs:
       SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
 
     steps:
+      # fetch-depth: 0 pulls full history + tags so the notes step can diff against the
+      # previous tag (git log <prev>..HEAD) to build the auto-generated detail section.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -150,39 +154,108 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Blink ${{ steps.ver.outputs.tag }}
-          generate_release_notes: true
+          # Notes are composed by the next step (hybrid: hand-written highlights from
+          # CHANGELOG.md + commit-derived detail). The release is created with an empty
+          # body here, then `gh release edit` fills it in.
+          generate_release_notes: false
           prerelease: ${{ steps.ver.outputs.prerelease }}
           files: installer/Output/Blink-Setup-*.exe
 
-      # Publish the in-app update manifest (CDN-served, avoids the REST API rate limit)
-      # and append the web-only donation footer. Runs after the release exists.
-      - name: Publish update manifest + support footer
+      # Compose hybrid release notes, then publish the in-app update manifest (CDN-served,
+      # avoids the REST API rate limit) and the web-only donation footer.
+      #
+      #   highlights  — hand-written, user-facing, from CHANGELOG.md (the single source of
+      #                 truth for "what's new"). This is ALL the in-app card shows.
+      #   detail      — auto-generated from commits since the previous tag, grouped by
+      #                 Conventional Commit type. Captures direct-to-main commits too (no PR
+      #                 needed), and goes in a collapsible block on the web release page only.
+      - name: Compose release notes + update manifest + support footer
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag  = '${{ steps.ver.outputs.tag }}'
           $ver  = '${{ steps.ver.outputs.version }}'
           $repo = '${{ github.repository }}'
-          # Clean auto-generated notes as a single string (footer added separately below).
-          $body = (gh release view $tag --json body --jq .body | Out-String).TrimEnd()
 
-          # latest.json — read by the in-app updater via the stable CDN URL
-          # https://github.com/<repo>/releases/latest/download/latest.json, which always
-          # redirects to the latest *stable* release's asset (not the 60/h REST API).
+          # --- 1) Highlights: read the CHANGELOG.md section for this version. Falls back to
+          #        [Unreleased] if the section hasn't been stamped with the version yet. ---
+          function Get-Changelog([string]$path, [string]$version) {
+            if (-not (Test-Path $path)) { return '' }
+            $lines = Get-Content -Path $path -Encoding utf8
+            $start = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match "^##\s*\[$([regex]::Escape($version))\]") { $start = $i; break }
+            }
+            if ($start -lt 0) {
+              for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match '^##\s*\[Unreleased\]') { $start = $i; break }
+              }
+            }
+            if ($start -lt 0) { return '' }
+            $out = @()
+            for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '^##\s') { break }
+              $out += $lines[$i]
+            }
+            return (($out -join "`n").Trim())
+          }
+          $highlights = Get-Changelog 'CHANGELOG.md' $ver
+
+          # --- 2) Detail: group commits since the previous tag by Conventional Commit type.
+          #        --no-merges drops the umbrella `merge:` commits, leaving the typed leaves. ---
+          $prev  = (git describe --tags --abbrev=0 HEAD^ 2>$null)
+          $range = if ($prev) { "$prev..HEAD" } else { 'HEAD' }
+          $subjects = @(git log $range --no-merges --pretty=format:'%s')
+          $groups = [ordered]@{
+            '✨ 새 기능' = @(); '🐛 버그 수정' = @(); '⚡ 성능' = @(); '📝 문서' = @(); '🔧 기타 변경' = @()
+          }
+          foreach ($s in $subjects) {
+            if (-not $s) { continue }
+            if ($s -match '^(\w+)(\([^)]*\))?!?:\s*(.+)$') {
+              $type  = $matches[1].ToLower()
+              $scope = if ($matches[2]) { $matches[2].Trim('(', ')') + ': ' } else { '' }
+              $desc  = $matches[3].Trim()
+              $cat = switch ($type) {
+                'feat' { '✨ 새 기능' } 'fix' { '🐛 버그 수정' } 'perf' { '⚡ 성능' }
+                'docs' { '📝 문서' } default { '🔧 기타 변경' }
+              }
+              $groups[$cat] += "- $scope$desc"
+            } else {
+              $groups['🔧 기타 변경'] += "- $s"
+            }
+          }
+          $detailParts = @()
+          foreach ($k in $groups.Keys) {
+            if ($groups[$k].Count -gt 0) { $detailParts += "#### $k`n" + ($groups[$k] -join "`n") }
+          }
+          $detail = ($detailParts -join "`n`n").Trim()
+          if ($prev) { $detail = ($detail + "`n`n**전체 변경 내역**: https://github.com/$repo/compare/$prev...$tag").Trim() }
+
+          # --- 3) latest.json — read by the in-app updater via the stable CDN URL
+          #        https://github.com/<repo>/releases/latest/download/latest.json (not the
+          #        60/h REST API). The app shows the user-facing highlights only; if a release
+          #        was tagged without a CHANGELOG entry, fall back to detail so it's never empty. ---
+          $appNotes = if ($highlights) { $highlights } else { $detail }
           $installerName = "Blink-Setup-$ver.exe"
           $manifest = [ordered]@{
             version       = $ver
             tag           = $tag
-            notes         = $body
+            notes         = $appNotes
             installerName = $installerName
             installerUrl  = "https://github.com/$repo/releases/download/$tag/$installerName"
           }
           $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path latest.json -Encoding utf8
           gh release upload $tag latest.json --clobber
 
-          # Donation footer (QR) — WEB release notes only. The <!--BLINK_NOTES_END--> sentinel
-          # lets the in-app renderer drop it (MarkdownLite can't render the table/img).
+          # --- 4) Web release body: highlights + collapsible detail + donation footer. The
+          #        <!--BLINK_NOTES_END--> sentinel marks the web-only footer; the app reads
+          #        latest.json (not this body) so it never sees it. ---
           $base = "https://raw.githubusercontent.com/$repo/$tag/Blink.App/Assets"
-          $footer = "`n`n<!--BLINK_NOTES_END-->`n`n---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
-          Set-Content -Path release-notes.md -Value ($body + $footer) -Encoding utf8
+          $footer = "<!--BLINK_NOTES_END-->`n`n---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
+          $webParts = @()
+          if ($highlights) { $webParts += $highlights }
+          if ($detail)     { $webParts += "<details>`n<summary>전체 변경 내역</summary>`n`n$detail`n`n</details>" }
+          $webParts += $footer
+          $webBody = ($webParts -join "`n`n")
+          Set-Content -Path release-notes.md -Value $webBody -Encoding utf8
           gh release edit $tag --notes-file release-notes.md
