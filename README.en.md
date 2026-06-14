@@ -16,7 +16,7 @@ SQLite FTS5 engine and a WPF spotlight UI.
 <p align="center"><sub>Left Alt + Space → type a fragment of the content and the document surfaces instantly.</sub></p>
 
 > Status: the search **engine** (`Blink.Core`) and the **indexer worker** are fully
-> implemented and unit-tested (103 tests) cross-platform. The **WPF app** (`Blink.App`)
+> implemented and unit-tested (362 tests) cross-platform. The **WPF app** (`Blink.App`)
 > targets `net8.0-windows` and must be built and verified on Windows — see
 > [`BUILD-WINDOWS.md`](BUILD-WINDOWS.md).
 
@@ -27,6 +27,10 @@ SQLite FTS5 engine and a WPF spotlight UI.
 - **Rich content extraction** — indexes the *contents* of `.txt` / `.md`, `.xlsx`, `.pdf`,
   `.docx`, `.pptx`, `.hwpx` (Hancom), and `.rtf`. Unreadable/unknown files fall back to
   filename-only indexing.
+- **Async, non-blocking search** — queries run on a background worker, so the spotlight
+  window stays responsive while you type.
+- **Auto-update** — when a new version ships, a tray notification offers to download and
+  install it in one click.
 - **Incremental indexing** — re-parses only new/modified files (by mtime); deletions are
   cleaned by a guarded pruner.
 - **Junk exclusion** — Office lock files (`~$*.xlsx`), temp files, OS metadata, etc., plus
@@ -37,7 +41,8 @@ SQLite FTS5 engine and a WPF spotlight UI.
   - 3-pass indexing over a disk-backed scan cache keeps memory flat on multi-million-file trees.
   - An out-of-process **indexer worker** isolates all SMB/NAS reads from the main app, for
     EDR/AV environments that block the main executable's network reads.
-  - `drive_split` indexes a whole-drive root (`L:\`) as independent child folders.
+  - `drive_split` indexes a whole-drive root (`L:\`) as independent child folders; large
+    folders are split into adaptive chunks so nothing is dropped on huge trees.
 - **Resident UI** — tray icon, global hotkey, acrylic spotlight window, inline match-line
   previews, autostart toggle.
 
@@ -48,7 +53,7 @@ SQLite FTS5 engine and a WPF spotlight UI.
 | `Blink.Core` | `net8.0` | Search engine: tokenizer, FTS5 store, parsers, indexer, pruner, bundling, worker protocol. Cross-platform, unit-tested. |
 | `Blink.Indexer.Worker` | `net8.0` | Standalone indexing process; streams store ops as JSON lines (EDR isolation). |
 | `Blink.Cli` | `net8.0` | Headless harness: `index` / `search` / `status` / `prune`. |
-| `Blink.Core.Tests` | `net8.0` | xUnit test suite (103 tests). |
+| `Blink.Core.Tests` | `net8.0` | xUnit test suite (362 tests). |
 | `Blink.App` | `net8.0-windows` | WPF spotlight UI. **Windows-only**; not in `Blink.sln`. |
 
 ## Quick start (engine — any OS with .NET 8)
@@ -87,4 +92,5 @@ you must release it under the same GPL-3.0 with its source (copyleft).
 See [LICENSE](LICENSE) ([한국어 안내](LICENSE.ko.md)).
 
 If Blink saves you time, you can buy me a coffee — see the
-[Korean README](README.md#라이선스) for the support link. ☕
+[Korean README](README.md#라이선스) for the support link. Inside the app, the settings,
+tray, and "What's new" screens also offer KakaoPay / Toss QR codes. ☕
