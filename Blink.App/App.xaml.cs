@@ -28,6 +28,10 @@ public partial class App : Application
     private readonly Dictionary<string, DateTime> _pendingFolderTimes = new();
     private UpdateService? _updates;
     private ReleaseInfo? _pendingRelease;
+    // Always-visible update surface in the tray. Unlike the balloon/toast, a menu item cannot be
+    // suppressed by Focus Assist / Do Not Disturb, so the update stays discoverable regardless.
+    private Forms.ToolStripMenuItem? _updateMenuItem;
+    private Forms.ToolStripSeparator? _updateSeparator;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -136,6 +140,17 @@ public partial class App : Application
         };
 
         var menu = new Forms.ContextMenuStrip();
+
+        // Persistent "update available" surface, hidden until an update is found. Sits at the top
+        // of the tray menu so it is the first thing the user sees — the suppression-proof surface.
+        _updateMenuItem = new Forms.ToolStripMenuItem("⬆ 업데이트 설치", null, (_, _) =>
+        {
+            if (_pendingRelease is not null) ShowUpdateWindow(_pendingRelease);
+        }) { Visible = false };
+        _updateSeparator = new Forms.ToolStripSeparator { Visible = false };
+        menu.Items.Add(_updateMenuItem);
+        menu.Items.Add(_updateSeparator);
+
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add(new Forms.ToolStripSeparator());
 
@@ -213,11 +228,26 @@ public partial class App : Application
         _dirSync?.Invoke();
     }
 
-    /// <summary>Automatic check found an offerable release: balloon first, window on click.</summary>
+    /// <summary>
+    /// Automatic check found an offerable release. Surfaces it on two channels: a persistent
+    /// tray menu item + tooltip (always visible, survives Focus Assist/DND) and a best-effort
+    /// balloon nudge (may be suppressed by the OS — that's why the tray item exists).
+    /// </summary>
     private void OnUpdateAvailable(ReleaseInfo release)
     {
         _pendingRelease = release;
         if (_tray is null) return;
+
+        // 1) Persistent tray surface — the reliable channel.
+        if (_updateMenuItem is not null)
+        {
+            _updateMenuItem.Text = $"⬆ 업데이트 v{release.Version} 설치";
+            _updateMenuItem.Visible = true;
+        }
+        if (_updateSeparator is not null) _updateSeparator.Visible = true;
+        _tray.Text = "Blink · 업데이트 있음"; // tooltip hint (NotifyIcon.Text ≤ 63 chars)
+
+        // 2) Best-effort instant nudge.
         _tray.BalloonTipClicked -= OnUpdateBalloonClicked; // re-arm idempotently per check
         _tray.BalloonTipClicked += OnUpdateBalloonClicked;
         _tray.ShowBalloonTip(10000, "Blink 업데이트",
