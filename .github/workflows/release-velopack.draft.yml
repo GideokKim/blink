@@ -1,0 +1,118 @@
+# Blink — Velopack release pipeline (DRAFT).
+#
+# UNVERIFIED (authored on macOS, never run). This is a DRAFT kept separate from the live
+# release.yml so the existing Inno pipeline keeps working (plan invariant: main is always
+# releasable). Validate on a Windows runner via a pre-release tag, then fold into release.yml
+# and retire the Inno path (plan Phase 4). `vpk` flags/commands MUST be confirmed against the
+# installed vpk version — they drift between releases.
+#
+# Dual-publish window: until all users have crossed the bridge, this can run ALONGSIDE the Inno
+# build so both `latest.json` (old channel) and `releases.win.json` (Velopack feed) exist.
+
+name: Release (Velopack draft)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without leading v (e.g. 1.2.3)'
+        required: true
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: ver
+        run: |
+          $v = '${{ github.event.inputs.version }}'
+          if (-not $v) { throw 'Could not resolve a version' }
+          $pre = if ($v -match '-') { 'true' } else { 'false' }
+          if ('${{ github.event.inputs.prerelease }}' -eq 'true') { $pre = 'true' }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v"    >> $env:GITHUB_OUTPUT
+          "prerelease=$pre" >> $env:GITHUB_OUTPUT
+
+      - name: Test engine
+        run: dotnet test Blink.Core.Tests -c Release
+
+      - name: Install vpk
+        # UNVERIFIED: pin the vpk tool version to match the Velopack NuGet in Blink.App.csproj.
+        run: dotnet tool install -g vpk
+
+      # NOTE: folder publish (NO -p:PublishSingleFile) — Velopack packs a directory.
+      - name: Publish app (self-contained, folder)
+        run: >
+          dotnet publish Blink.App -c Release -r win-x64 --self-contained
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish/app
+
+      - name: Publish indexer worker (self-contained, folder)
+        run: >
+          dotnet publish Blink.Indexer.Worker -c Release -r win-x64 --self-contained
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish/worker
+
+      # The worker must live IN the app's pack dir (Velopack packs a single directory).
+      # The old Inno script added it via a second [Files] source; replicate that here.
+      - name: Stage worker into app publish dir
+        run: Copy-Item publish/worker/Blink.Indexer.Worker.exe publish/app/ -Force
+
+      # --- Sign inner exes BEFORE packing (Velopack bundles them; can't sign after). ---
+      - name: Sign binaries (SignPath)
+        if: env.SIGNING_ENABLED == 'true'
+        # UNVERIFIED: reuse the existing signpath action + slugs from release.yml.
+        run: echo "TODO: sign publish/app/Blink.App.exe + Blink.Indexer.Worker.exe via SignPath"
+
+      - name: Pack with Velopack
+        # UNVERIFIED: confirm vpk pack flags. --mainExe is the launcher; --packDir is the folder
+        # that becomes current/. Produces *-full.nupkg, *-delta.nupkg, releases.win.json, Setup.exe.
+        run: >
+          vpk pack
+          --packId Blink
+          --packVersion ${{ steps.ver.outputs.version }}
+          --packDir publish/app
+          --mainExe Blink.App.exe
+          --packTitle Blink
+
+      # --- Sign the Velopack Setup.exe AFTER packing (third artifact-configuration-slug). ---
+      - name: Sign Velopack Setup (SignPath)
+        if: env.SIGNING_ENABLED == 'true'
+        run: echo "TODO: sign the Velopack Setup .exe (new artifact-configuration-slug)"
+
+      - name: Upload to GitHub Releases
+        # UNVERIFIED: `vpk upload github` publishes the feed + assets to the release for the tag.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          vpk upload github
+          --repoUrl https://github.com/${{ github.repository }}
+          --publish
+          --releaseName "Blink ${{ steps.ver.outputs.tag }}"
+          --tag ${{ steps.ver.outputs.tag }}
+          ${{ steps.ver.outputs.prerelease == 'true' && '--pre' || '' }}
+
+      # NOTE: No bridge installer. Existing Inno users do NOT auto-update across the boundary;
+      # they are notified directly to uninstall the old Blink once and install the Velopack build
+      # (small, reachable user base — decision 2026-06-19). New users install the Velopack Setup
+      # and get clean auto-updates from here on.
