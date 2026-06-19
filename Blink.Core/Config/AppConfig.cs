@@ -20,7 +20,7 @@ public sealed class AppConfig
     /// actual HKCU\…\Run registration is applied by the Windows-only app layer.
     /// </summary>
     [JsonPropertyName("autostart")]
-    public bool Autostart { get; set; }
+    public bool Autostart { get; set; } = true;
 
     /// <summary>Launcher layout: <c>"A"</c> (Classic, single column) or <c>"B"</c> (Dual Panel). Default A.</summary>
     [JsonPropertyName("direction")]

@@ -42,6 +42,12 @@ public partial class App : Application
 
         _config = AppConfig.Load();
 
+        // Self-heal autostart from the saved preference on every launch. Apply() is idempotent and
+        // points the HKCU Run entry at the current exe (Environment.ProcessPath / Velopack's stable
+        // current\ path), so the "autostart silently turns off after an install/update" bug — caused
+        // by relying on the installer task + only applying on Settings-save — no longer happens.
+        AutostartManager.Apply(_config.Autostart);
+
         // Theme tokens must be published before any launcher control is created.
         ThemeManager.Apply(_config.ThemeMode, _config.BaseColor, _config.Accent);
 
