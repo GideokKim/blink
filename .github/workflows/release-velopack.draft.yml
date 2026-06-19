@@ -103,12 +103,12 @@ jobs:
           echo "TODO - sign the Velopack Setup .exe (new artifact-configuration-slug)"
 
       - name: Upload to GitHub Releases
-        # UNVERIFIED: `vpk upload github` publishes the feed + assets to the release for the tag.
-        env:
-          GH_TOKEN: ${{ github.token }}
+        # `vpk upload github` takes the token via --token (NOT the GH_TOKEN env var).
+        # The auto-provided GITHUB_TOKEN has contents:write (see permissions above).
         run: >
           vpk upload github
           --repoUrl https://github.com/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
           --publish
           --releaseName "Blink ${{ steps.ver.outputs.tag }}"
           --tag ${{ steps.ver.outputs.tag }}
