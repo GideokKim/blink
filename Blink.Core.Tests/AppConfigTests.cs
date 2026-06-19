@@ -34,9 +34,11 @@ public sealed class AppConfigTests : IDisposable
     }
 
     [Fact]
-    public void Autostart_DefaultsFalse()
+    public void Autostart_DefaultsTrue()
     {
-        Assert.False(AppConfig.Load(_dir).Autostart);
+        // A launcher should start with Windows by default (matches the old installer's
+        // default-checked autostart task); users can opt out in Settings.
+        Assert.True(AppConfig.Load(_dir).Autostart);
     }
 
     [Fact]
