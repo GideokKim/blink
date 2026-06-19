@@ -82,7 +82,8 @@ jobs:
       - name: Sign binaries (SignPath)
         if: env.SIGNING_ENABLED == 'true'
         # UNVERIFIED: reuse the existing signpath action + slugs from release.yml.
-        run: echo "TODO: sign publish/app/Blink.App.exe + Blink.Indexer.Worker.exe via SignPath"
+        run: |
+          echo "TODO - sign publish/app/Blink.App.exe + Blink.Indexer.Worker.exe via SignPath"
 
       - name: Pack with Velopack
         # UNVERIFIED: confirm vpk pack flags. --mainExe is the launcher; --packDir is the folder
@@ -98,7 +99,8 @@ jobs:
       # --- Sign the Velopack Setup.exe AFTER packing (third artifact-configuration-slug). ---
       - name: Sign Velopack Setup (SignPath)
         if: env.SIGNING_ENABLED == 'true'
-        run: echo "TODO: sign the Velopack Setup .exe (new artifact-configuration-slug)"
+        run: |
+          echo "TODO - sign the Velopack Setup .exe (new artifact-configuration-slug)"
 
       - name: Upload to GitHub Releases
         # UNVERIFIED: `vpk upload github` publishes the feed + assets to the release for the tag.
