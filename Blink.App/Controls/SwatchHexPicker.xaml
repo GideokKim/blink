@@ -60,5 +60,17 @@
         <!-- Live preview -->
         <Border x:Name="Preview" Width="26" Height="26" CornerRadius="8" Margin="10,0,0,0"
                 BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1"/>
+
+        <!-- Eyedropper: pick a color from anywhere on screen -->
+        <Border x:Name="EyedropperBtn" Width="32" Height="32" CornerRadius="9" Margin="10,0,0,0"
+                Cursor="Hand" ToolTip="화면에서 색 추출 (스포이드)"
+                Background="{DynamicResource Blink.Inset}"
+                BorderBrush="{DynamicResource Blink.HairlineStrong}" BorderThickness="1"
+                MouseLeftButtonUp="Eyedropper_Click">
+            <!-- Crosshair-in-circle "pick" glyph (vector, no icon-font dependency) -->
+            <Path Stroke="{DynamicResource Blink.Txt}" StrokeThickness="1.5"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Data="M8,1 V15 M1,8 H15 M3,8 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0"/>
+        </Border>
     </StackPanel>
 </UserControl>

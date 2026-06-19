@@ -119,6 +119,17 @@ public partial class SwatchHexPicker : UserControl
         }
     }
 
+    private void Eyedropper_Click(object sender, MouseButtonEventArgs e)
+    {
+        var overlay = new EyedropperOverlay();
+        if (Window.GetWindow(this) is { } owner) overlay.Owner = owner;
+        if (overlay.ShowDialog() == true && overlay.PickedHex is { } hex)
+        {
+            SelectedHex = hex;      // updates field/preview/rings and exits 시스템 mode
+            ColorChanged?.Invoke(); // SelectedHex setter is silent; notify the host explicitly
+        }
+    }
+
     private void SystemChip_Click(object sender, MouseButtonEventArgs e)
     {
         if (SystemChip.Visibility != Visibility.Visible) return;
