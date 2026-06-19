@@ -1,27 +1,40 @@
 // Blink.App (WPF, Windows-only). NOT built on macOS — verify on Windows.
+//
+// UNVERIFIED (authored on macOS, not compiled): Velopack-backed updater. Every line marked
+// `// VP?` touches the Velopack API and MUST be confirmed against the installed package on
+// Windows (signatures drift across Velopack versions). Behaviour contract preserved from the
+// Inno version: automatic-check failures are silent (Trace only) and never disturb the app.
 using System.Diagnostics;
-using System.IO;
-using System.Net.Http;
 using System.Reflection;
 using System.Windows.Threading;
 using Blink.Core.Config;
 using Blink.Core.Update;
+using Velopack;            // VP?
+using Velopack.Sources;    // VP? (GithubSource)
 
 namespace Blink.App.Update;
 
 /// <summary>
-/// Update orchestration for the tray app: checks 30 s after startup and every 24 h after,
-/// downloads the installer into %TEMP%\Blink, and hands off to a silent Inno Setup run.
-/// Automatic-check failures are silent (Trace only) — the updater never disturbs the app.
+/// Update orchestration for the tray app, backed by Velopack. Checks 30 s after startup and
+/// every 24 h after; download + apply are delegated to Velopack (delta, background staging,
+/// 1-click restart). Replaces the old Inno "download installer to %TEMP% and silent-run" flow.
 /// </summary>
 public sealed class UpdateService : IDisposable
 {
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
 
+    // Pinned release feed. VP? confirm GithubSource ctor (repoUrl, accessToken, prerelease).
+    private const string RepoUrl = "https://github.com/GideokKim/blink";
+
     private readonly AppConfig _config;
     private readonly DispatcherTimer _timer = new();
     private bool _firstTick = true;
+
+    // Shared manager + the most recent check result, so DownloadAndApplyAsync can act on it.
+    private static readonly UpdateManager Manager =
+        new(new GithubSource(RepoUrl, null, prerelease: false)); // VP?
+    private static UpdateInfo? _pending;                          // VP?
 
     /// <summary>Raised on the UI thread when an automatic check finds an offerable release.</summary>
     public event Action<ReleaseInfo>? UpdateAvailable;
@@ -29,13 +42,20 @@ public sealed class UpdateService : IDisposable
     public UpdateService(AppConfig config) => _config = config;
 
     /// <summary>
-    /// Running version from AssemblyInformationalVersion, build metadata stripped
-    /// (the SDK appends "+&lt;sha&gt;"; comparisons ignore it per semver anyway).
+    /// Running version. Velopack's installed version is authoritative; fall back to the assembly's
+    /// informational version for dev runs / the legacy (non-Velopack) layout so What's New keeps working.
     /// </summary>
     public static string CurrentVersion
     {
         get
         {
+            try
+            {
+                var v = Manager.CurrentVersion; // VP? SemanticVersion? (null when not Velopack-installed)
+                if (v is not null) return v.ToString();
+            }
+            catch { /* not installed via Velopack — fall through to assembly version */ }
+
             var info = Assembly.GetEntryAssembly()
                 ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? "0.0.0";
@@ -58,21 +78,56 @@ public sealed class UpdateService : IDisposable
             }
             if (!_config.UpdateCheck) return;
 
-            var release = await FetchLatestAsync();
-            if (UpdatePolicy.ShouldOffer(release, CurrentVersion, _config.SkipVersion))
-                UpdateAvailable?.Invoke(release!);
+            var release = await CheckAsync();
+            // Velopack already guarantees "strictly newer"; we only enforce the user's skip choice.
+            if (release is not null &&
+                !string.Equals(release.Version.ToString(), _config.SkipVersion, StringComparison.OrdinalIgnoreCase))
+                UpdateAvailable?.Invoke(release);
         };
         _timer.Start();
     }
 
-    /// <summary>Latest stable release, or null on any failure. Used by auto + "지금 확인".</summary>
-    public static async Task<ReleaseInfo?> FetchLatestAsync()
+    /// <summary>
+    /// Velopack check. Returns a ReleaseInfo (adapter for the existing UI) when a newer release
+    /// exists, else null. Notes are fetched by tag from GitHub so the update card stays populated.
+    /// Any failure (offline, not Velopack-installed) returns null — silent, retry next cycle.
+    /// </summary>
+    public static async Task<ReleaseInfo?> CheckAsync()
     {
-        using var checker = new UpdateChecker();
-        return await checker.FetchLatestAsync();
+        try
+        {
+            _pending = await Manager.CheckForUpdatesAsync(); // VP? UpdateInfo?
+            if (_pending is null) return null;
+
+            var version = _pending.TargetFullRelease.Version; // VP? NuGet/SemanticVersion
+            var tag = $"v{version}";
+            if (!SemVer.TryParse(tag, out var sem) || sem is null) return null;
+
+            // Reuse the GitHub release-notes fetch for the body (Velopack carries no markdown notes).
+            var notes = await FetchByTagAsync(tag);
+
+            return new ReleaseInfo
+            {
+                Version = sem,
+                TagName = tag,
+                Body = notes?.Body ?? "",
+                // Sentinel so UpdatePolicy.IsNewer's null-check passes; Velopack owns the actual asset.
+                InstallerUrl = "velopack",
+                InstallerName = null,
+            };
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Blink] Velopack check failed: {ex.Message}");
+            return null;
+        }
     }
 
-    /// <summary>Release notes for a specific tag (What's New), or null on any failure.</summary>
+    /// <summary>Latest stable release, or null. Kept for the manual "지금 확인" button.</summary>
+    public static Task<ReleaseInfo?> FetchLatestAsync() => CheckAsync();
+
+    /// <summary>Release notes for a specific tag (What's New), or null on any failure.
+    /// Still served straight from the GitHub Releases API — Velopack does not expose markdown notes.</summary>
     public static async Task<ReleaseInfo?> FetchByTagAsync(string tag)
     {
         using var checker = new UpdateChecker();
@@ -80,76 +135,24 @@ public sealed class UpdateService : IDisposable
     }
 
     /// <summary>
-    /// Download the installer asset to %TEMP%\Blink, reporting 0–100 progress.
-    /// On failure/cancel the partial file is deleted and the exception propagates
-    /// (UpdateWindow turns it into a Korean message + retry).
+    /// Download the pending update (delta if available) reporting 0–100 progress, then apply it
+    /// and restart into the new version. Replaces the old download-to-%TEMP% + silent-Inno flow;
+    /// the process exits inside ApplyUpdatesAndRestart, so control does not return on success.
     /// </summary>
-    public static async Task<string> DownloadInstallerAsync(
+    public static async Task DownloadAndApplyAsync(
         ReleaseInfo release, IProgress<double> progress, CancellationToken ct)
     {
-        if (release.InstallerUrl is null || release.InstallerName is null)
-            throw new InvalidOperationException("release has no installer asset");
+        if (_pending is null)
+            throw new InvalidOperationException("no pending Velopack update (call CheckAsync first)");
 
-        Directory.CreateDirectory(TempDir);
-        var path = Path.Combine(TempDir, release.InstallerName);
-        try
-        {
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Blink-Updater");
-            using var rsp = await http.GetAsync(
-                release.InstallerUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-            rsp.EnsureSuccessStatusCode();
-
-            long total = rsp.Content.Headers.ContentLength ?? -1;
-            await using var src = await rsp.Content.ReadAsStreamAsync(ct);
-            await using var dst = File.Create(path);
-            var buf = new byte[81920];
-            long done = 0;
-            int n;
-            while ((n = await src.ReadAsync(buf, ct)) > 0)
-            {
-                await dst.WriteAsync(buf.AsMemory(0, n), ct);
-                done += n;
-                if (total > 0) progress.Report(100.0 * done / total);
-            }
-            return path;
-        }
-        catch
-        {
-            try { File.Delete(path); } catch { /* partial file may not exist */ }
-            throw;
-        }
+        await Manager.DownloadUpdatesAsync(_pending, p => progress.Report(p), cancelToken: ct); // VP?
+        ct.ThrowIfCancellationRequested();
+        Manager.ApplyUpdatesAndRestart(_pending); // VP? exits the process
     }
 
-    /// <summary>Launch the silent installer; the caller must then quit so the exe unlocks.</summary>
-    public static void LaunchInstaller(string setupPath) =>
-        Process.Start(new ProcessStartInfo(setupPath, "/SILENT /SUPPRESSMSGBOXES /NORESTART")
-        {
-            UseShellExecute = true,
-        });
-
-    private static string TempDir => Path.Combine(Path.GetTempPath(), "Blink");
-
-    /// <summary>
-    /// Best-effort cleanup of installers left by previous updates. Runs at startup because
-    /// the installer can't be deleted right after launch — it is still executing.
-    /// </summary>
-    public static void CleanupTempInstallers()
-    {
-        try
-        {
-            if (!Directory.Exists(TempDir)) return;
-            foreach (var f in Directory.EnumerateFiles(TempDir, "Blink-Setup-*.exe"))
-            {
-                try { File.Delete(f); }
-                catch { /* still in use by a running installer — next launch */ }
-            }
-        }
-        catch (Exception ex)
-        {
-            Trace.WriteLine($"[Blink] temp installer cleanup failed: {ex.Message}");
-        }
-    }
+    /// <summary>No-op under Velopack (it manages its own staging/cleanup); kept for call-site
+    /// compatibility with App.OnStartup until that call is removed in the cleanup phase.</summary>
+    public static void CleanupTempInstallers() { /* Velopack self-manages */ }
 
     public void Dispose() => _timer.Stop();
 }

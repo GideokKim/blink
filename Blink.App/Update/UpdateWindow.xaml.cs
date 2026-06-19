@@ -43,13 +43,15 @@ public partial class UpdateWindow : Window
 
         try
         {
+            // UNVERIFIED: Velopack download (delta) + apply + restart. The process exits inside
+            // ApplyUpdatesAndRestart, so the lines after it are not reached on success.
             var progress = new Progress<double>(p => DownloadBar.Value = p);
-            var path = await UpdateService.DownloadInstallerAsync(_release, progress, _cts.Token);
+            StatusText.Text = "다운로드 중…";
+            // _quitForUpdate is retained for signature compatibility; Velopack restarts the app itself.
+            _ = _quitForUpdate;
 
-            StatusText.Text = "설치를 시작합니다 — 앱이 잠시 종료됩니다…";
-            CancelBtn.IsEnabled = false;
-            UpdateService.LaunchInstaller(path);
-            _quitForUpdate();
+            StatusText.Text = "설치 후 자동으로 재시작됩니다 — 앱이 잠시 종료됩니다…";
+            await UpdateService.DownloadAndApplyAsync(_release, progress, _cts.Token);
         }
         catch (OperationCanceledException)
         {
