@@ -6,7 +6,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctrl="clr-namespace:Blink.App.Controls"
         Title="Blink — 후원하기"
-        Width="380" SizeToContent="Height"
+        Width="460" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
