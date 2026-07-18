@@ -114,6 +114,96 @@ jobs:
           --tag ${{ steps.ver.outputs.tag }}
           ${{ steps.ver.outputs.prerelease == 'true' && '--pre' || '' }}
 
+      # `vpk upload` creates the release with an EMPTY body. Compose the hybrid notes the
+      # same way release.yml (Inno) does and patch them in via `gh release edit`, so the
+      # in-app "새로워진 점" window (which reads release.Body via the GitHub API, unlike the
+      # Inno app that read latest.json) is never blank. NOTE: latest.json is NOT produced
+      # here — that manifest is Inno-only; Velopack updates read releases.win.json.
+      #
+      #   highlights — hand-written, user-facing, from CHANGELOG.md (single source of truth).
+      #   detail     — auto-grouped commits since the previous tag (web-only, collapsible).
+      #
+      # The <!--BLINK_NOTES_END--> sentinel is placed right AFTER the highlights: MarkdownView
+      # cuts the body there, so the app shows ONLY the highlights while the web release page
+      # still renders the collapsible detail + donation footer below it.
+      - name: Compose release notes (CHANGELOG + commit detail)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag  = '${{ steps.ver.outputs.tag }}'
+          $ver  = '${{ steps.ver.outputs.version }}'
+          $repo = '${{ github.repository }}'
+
+          # --- 1) Highlights: the CHANGELOG.md section for this version (falls back to
+          #        [Unreleased] if it hasn't been stamped with the version yet). ---
+          function Get-Changelog([string]$path, [string]$version) {
+            if (-not (Test-Path $path)) { return '' }
+            $lines = Get-Content -Path $path -Encoding utf8
+            $start = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match "^##\s*\[$([regex]::Escape($version))\]") { $start = $i; break }
+            }
+            if ($start -lt 0) {
+              for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match '^##\s*\[Unreleased\]') { $start = $i; break }
+              }
+            }
+            if ($start -lt 0) { return '' }
+            $out = @()
+            for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '^##\s') { break }
+              $out += $lines[$i]
+            }
+            return (($out -join "`n").Trim())
+          }
+          $highlights = Get-Changelog 'CHANGELOG.md' $ver
+
+          # --- 2) Detail: commits since the previous tag grouped by Conventional Commit type.
+          #        HEAD is the release commit (vpk created $tag at it). --no-merges drops the
+          #        umbrella merge commits, leaving the typed leaves. ---
+          $prev  = (git describe --tags --abbrev=0 HEAD^ 2>$null)
+          $range = if ($prev) { "$prev..HEAD" } else { 'HEAD' }
+          $subjects = @(git log $range --no-merges --pretty=format:'%s')
+          $groups = [ordered]@{
+            '✨ 새 기능' = @(); '🐛 버그 수정' = @(); '⚡ 성능' = @(); '📝 문서' = @(); '🔧 기타 변경' = @()
+          }
+          foreach ($s in $subjects) {
+            if (-not $s) { continue }
+            if ($s -match '^(\w+)(\([^)]*\))?!?:\s*(.+)$') {
+              $type  = $matches[1].ToLower()
+              $scope = if ($matches[2]) { $matches[2].Trim('(', ')') + ': ' } else { '' }
+              $desc  = $matches[3].Trim()
+              $cat = switch ($type) {
+                'feat' { '✨ 새 기능' } 'fix' { '🐛 버그 수정' } 'perf' { '⚡ 성능' }
+                'docs' { '📝 문서' } default { '🔧 기타 변경' }
+              }
+              $groups[$cat] += "- $scope$desc"
+            } else {
+              $groups['🔧 기타 변경'] += "- $s"
+            }
+          }
+          $detailParts = @()
+          foreach ($k in $groups.Keys) {
+            if ($groups[$k].Count -gt 0) { $detailParts += "#### $k`n" + ($groups[$k] -join "`n") }
+          }
+          $detail = ($detailParts -join "`n`n").Trim()
+          if ($prev) { $detail = ($detail + "`n`n**전체 변경 내역**: https://github.com/$repo/compare/$prev...$tag").Trim() }
+
+          # --- 3) Body: $appNotes ABOVE the sentinel (all the app shows), web-only extras
+          #        (collapsible detail + donation footer) BELOW it. Falls back to $detail when
+          #        no CHANGELOG entry exists so the app card is never empty. ---
+          $appNotes = if ($highlights) { $highlights } else { $detail }
+          $base = "https://raw.githubusercontent.com/$repo/$tag/Blink.App/Assets"
+          $donate = "---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
+          $below = @()
+          if ($highlights -and $detail) {
+            $below += "<details>`n<summary>전체 변경 내역</summary>`n`n$detail`n`n</details>"
+          }
+          $below += $donate
+          $body = $appNotes + "`n`n<!--BLINK_NOTES_END-->`n`n" + ($below -join "`n`n")
+          Set-Content -Path release-notes.md -Value $body -Encoding utf8
+          gh release edit $tag --notes-file release-notes.md
+
       # NOTE: No bridge installer. Existing Inno users do NOT auto-update across the boundary;
       # they are notified directly to uninstall the old Blink once and install the Velopack build
       # (small, reachable user base — decision 2026-06-19). New users install the Velopack Setup
