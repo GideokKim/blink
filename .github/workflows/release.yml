@@ -162,14 +162,14 @@ jobs:
           files: installer/Output/Blink-Setup-*.exe
 
       # Compose hybrid release notes, then publish the in-app update manifest (CDN-served,
-      # avoids the REST API rate limit) and the web-only donation footer.
+      # avoids the REST API rate limit).
       #
       #   highlights  — hand-written, user-facing, from CHANGELOG.md (the single source of
       #                 truth for "what's new"). This is ALL the in-app card shows.
       #   detail      — auto-generated from commits since the previous tag, grouped by
       #                 Conventional Commit type. Captures direct-to-main commits too (no PR
       #                 needed), and goes in a collapsible block on the web release page only.
-      - name: Compose release notes + update manifest + support footer
+      - name: Compose release notes + update manifest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -247,15 +247,13 @@ jobs:
           $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path latest.json -Encoding utf8
           gh release upload $tag latest.json --clobber
 
-          # --- 4) Web release body: highlights + collapsible detail + donation footer. The
-          #        <!--BLINK_NOTES_END--> sentinel marks the web-only footer; the app reads
-          #        latest.json (not this body) so it never sees it. ---
-          $base = "https://raw.githubusercontent.com/$repo/$tag/Blink.App/Assets"
-          $footer = "<!--BLINK_NOTES_END-->`n`n---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
+          # --- 4) Web release body: highlights above the <!--BLINK_NOTES_END--> sentinel,
+          #        collapsible commit detail below it. The app reads latest.json (not this
+          #        body), so the sentinel is just a boundary marker on the web page here. ---
           $webParts = @()
           if ($highlights) { $webParts += $highlights }
+          $webParts += '<!--BLINK_NOTES_END-->'
           if ($detail)     { $webParts += "<details>`n<summary>전체 변경 내역</summary>`n`n$detail`n`n</details>" }
-          $webParts += $footer
           $webBody = ($webParts -join "`n`n")
           Set-Content -Path release-notes.md -Value $webBody -Encoding utf8
           gh release edit $tag --notes-file release-notes.md

@@ -125,7 +125,7 @@ jobs:
       #
       # The <!--BLINK_NOTES_END--> sentinel is placed right AFTER the highlights: MarkdownView
       # cuts the body there, so the app shows ONLY the highlights while the web release page
-      # still renders the collapsible detail + donation footer below it.
+      # still renders the collapsible detail below it.
       - name: Compose release notes (CHANGELOG + commit detail)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -189,18 +189,16 @@ jobs:
           $detail = ($detailParts -join "`n`n").Trim()
           if ($prev) { $detail = ($detail + "`n`n**전체 변경 내역**: https://github.com/$repo/compare/$prev...$tag").Trim() }
 
-          # --- 3) Body: $appNotes ABOVE the sentinel (all the app shows), web-only extras
-          #        (collapsible detail + donation footer) BELOW it. Falls back to $detail when
-          #        no CHANGELOG entry exists so the app card is never empty. ---
+          # --- 3) Body: $appNotes ABOVE the sentinel (all the app shows), the collapsible
+          #        commit detail (web-only) BELOW it. Falls back to $detail when no CHANGELOG
+          #        entry exists so the app card is never empty. ---
           $appNotes = if ($highlights) { $highlights } else { $detail }
-          $base = "https://raw.githubusercontent.com/$repo/$tag/Blink.App/Assets"
-          $donate = "---`n`n### ☕ Blink가 시간을 아껴줬다면`n`n커피 한 잔으로 응원해주세요. 계속 만들어 갈 큰 힘이 됩니다.`n`n| 카카오페이 | 토스 |`n|:--:|:--:|`n| <img src=`"$base/donate-kakaopay.png`" width=`"180`"> | <img src=`"$base/donate-toss.png`" width=`"180`"> |`n`n[카카오페이 링크로 보내기](https://qr.kakaopay.com/281006011000003981911022)"
           $below = @()
           if ($highlights -and $detail) {
             $below += "<details>`n<summary>전체 변경 내역</summary>`n`n$detail`n`n</details>"
           }
-          $below += $donate
-          $body = $appNotes + "`n`n<!--BLINK_NOTES_END-->`n`n" + ($below -join "`n`n")
+          $body = $appNotes + "`n`n<!--BLINK_NOTES_END-->"
+          if ($below.Count -gt 0) { $body += "`n`n" + ($below -join "`n`n") }
           Set-Content -Path release-notes.md -Value $body -Encoding utf8
           gh release edit $tag --notes-file release-notes.md
 
