@@ -1,0 +1,24 @@
+name: Dependabot auto-merge
+
+# No AI here: schedules GitHub native auto-merge on dependabot PRs. The merge
+# only executes once the required build-test check is green (branch
+# protection); a red CI leaves the PR open and visible. Dependabot-triggered
+# runs receive exactly the permissions declared below on GITHUB_TOKEN; other
+# repo secrets are not exposed to dependabot runs.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (merge commit; squash is disabled repo-wide)
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
