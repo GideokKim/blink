@@ -1,0 +1,32 @@
+name: CI
+
+# Safety gate for all automation: builds the full solution (incl. the WPF app,
+# which only compiles on Windows) and runs the Core test suite. The job name
+# `build-test` is a required status check on main — renaming it breaks
+# branch protection and dependabot auto-merge.
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build solution
+        run: dotnet build Blink.sln -c Release
+
+      - name: Test engine
+        run: dotnet test Blink.Core.Tests -c Release --no-build
