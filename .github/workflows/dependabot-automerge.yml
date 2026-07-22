@@ -17,8 +17,8 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Enable auto-merge (merge commit; squash is disabled repo-wide)
-        run: gh pr merge --auto --merge "$PR_URL"
+      - name: Enable auto-merge (rebase; ruleset requires linear history)
+        run: gh pr merge --auto --rebase "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
