@@ -16,6 +16,13 @@ public partial class WhatsNewWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void Donate_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new DonateWindow { Owner = this };
+        win.Show();
+        win.Activate();
+    }
+
     private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton == MouseButton.Left) DragMove();
