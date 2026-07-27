@@ -101,6 +101,17 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <!-- Update-available badge: hidden until App.OnUpdateAvailable calls SetUpdateAvailable. -->
+                            <Border x:Name="UpdateBadge" Style="{StaticResource Blink.ContentBadge}"
+                                    Margin="0,0,14,0" Cursor="Hand" Visibility="Collapsed"
+                                    MouseLeftButtonUp="UpdateBadge_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⬆" FontSize="11" Margin="0,0,4,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource Blink.Accent}"/>
+                                    <TextBlock x:Name="UpdateBadgeText" Style="{StaticResource Blink.MonoFaint}"
+                                               Foreground="{DynamicResource Blink.Accent}"/>
+                                </StackPanel>
+                            </Border>
                             <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
                                 <Border Style="{StaticResource Blink.KbdBorder}" Margin="0,0,4,0">
                                     <TextBlock Text="↑" Style="{StaticResource Blink.KbdText}"/>

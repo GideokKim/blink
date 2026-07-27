@@ -62,6 +62,7 @@ public partial class App : Application
         _launcher = new LauncherWindow(DemoIndex.Items, _status, provider);
         _launcher.SetDirection(DirectionOf(_config));
         _launcher.SetIndexMode(_store.Count());
+        _launcher.UpdateRequested += () => { if (_pendingRelease is not null) ShowUpdateWindow(_pendingRelease); };
 
         // Indexing progress is surfaced live via _status to the launcher footer and Settings.
         _indexing = new IndexingService();
@@ -235,13 +236,18 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Automatic check found an offerable release. Surfaces it on two channels: a persistent
-    /// tray menu item + tooltip (always visible, survives Focus Assist/DND) and a best-effort
-    /// balloon nudge (may be suppressed by the OS — that's why the tray item exists).
+    /// Automatic check found an offerable release. Surfaces it on three channels: the launcher
+    /// footer badge (seen on the next Alt+Space), a persistent tray menu item + tooltip (always
+    /// visible, survives Focus Assist/DND), and a best-effort balloon nudge (may be suppressed
+    /// by the OS — that's why the other two surfaces exist).
     /// </summary>
     private void OnUpdateAvailable(ReleaseInfo release)
     {
         _pendingRelease = release;
+
+        // 0) Launcher footer badge — surfaced the next time the user hits Alt+Space.
+        _launcher?.SetUpdateAvailable(release.Version.ToString());
+
         if (_tray is null) return;
 
         // 1) Persistent tray surface — the reliable channel.
