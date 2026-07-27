@@ -66,11 +66,18 @@ jobs:
                (file:line), what you ruled out, and concrete steps the
                reporter can take to verify. Do not implement speculatively.
 
-            HARD RULE: never finish without posting exactly one comment on
-            the issue via `gh issue comment`. Your final response text is
-            not shown anywhere — a run that ends without commenting is a
-            silent no-op. Whatever the classification, the comment IS the
+            HARD RULE: never finish without posting a comment on the issue
+            via `gh issue comment`. Your final response text is not shown
+            anywhere — a run that ends without commenting is a silent
+            no-op. Whatever the classification, the comment IS the
             deliverable.
+
+            For classification 1, post a SHORT comment announcing the
+            classification and your planned approach BEFORE you start
+            implementing, then a final comment with the PR (or branch)
+            link when done. If the run dies mid-implementation, that
+            early comment and the pushed branch are the only visible
+            traces of your work.
 
             Write all issue/PR comments in the language the issue was written
             in (Korean issue → Korean reply). PR titles/bodies and commits
@@ -82,7 +89,7 @@ jobs:
             could not verify locally; the repo's Windows CI validates the
             full solution on the PR.
           claude_args: |
-            --max-turns 40
+            --max-turns 60
             --allowedTools "Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(dotnet:*),Read,Write,Edit,Glob,Grep"
 
   mention:
