@@ -28,6 +28,9 @@ public partial class LauncherWindow : Window
     private bool _dotPulsing;
     private LauncherDirection _direction = LauncherDirection.Classic;
 
+    /// <summary>Raised when the user clicks the footer update badge; App owns the release details.</summary>
+    public event Action? UpdateRequested;
+
     private const double WidthClassic = 640;
     private const double WidthSplit = 880;
 
@@ -73,6 +76,13 @@ public partial class LauncherWindow : Window
 
     /// <summary>Flip the launcher between demo and real-index results (see <see cref="LauncherViewModel.SetIndexMode"/>).</summary>
     public void SetIndexMode(int docCount) => _vm.SetIndexMode(docCount);
+
+    /// <summary>Show/hide the footer update badge. Null hides it; a version string shows "v{version}".</summary>
+    public void SetUpdateAvailable(string? version)
+    {
+        UpdateBadge.Visibility = version is null ? Visibility.Collapsed : Visibility.Visible;
+        if (version is not null) UpdateBadgeText.Text = $"v{version}";
+    }
 
     // ── Summon / hide ───────────────────────────────────────────────────────────
     public void Summon()
@@ -210,6 +220,8 @@ public partial class LauncherWindow : Window
                 break;
         }
     }
+
+    private void UpdateBadge_Click(object sender, MouseButtonEventArgs e) => UpdateRequested?.Invoke();
 
     // ── Activation (Enter / row click / preview buttons) ────────────────────────
     private void HandleAction(string action)
