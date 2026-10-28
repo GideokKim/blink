@@ -78,6 +78,19 @@ public sealed class ExtractStatusStoreTests : IDisposable
     }
 
     [Fact]
+    public void IterExtractFailures_FailuresComeBeforeInformational_SoTheLimitCannotHideThem()
+    {
+        var root = FreshRoot("ord");
+        using var store = NewStore();
+        store.UpsertMany(Enumerable.Range(0, 5)
+            .Select(i => Doc(Path.Combine(root, $"big{i}.pdf"), ExtractStatus.TooLarge))
+            .Append(Doc(Path.Combine(root, "zz.docx"), ExtractStatus.Encrypted)));
+
+        var top = store.IterExtractFailures(root, 2);
+        Assert.Equal(ExtractStatus.Encrypted, top[0].Status);
+    }
+
+    [Fact]
     public void Delete_RemovesStatusWithRow()
     {
         var root = FreshRoot("del");
