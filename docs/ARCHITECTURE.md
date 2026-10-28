@@ -60,6 +60,11 @@ config.json(folders[]) ──▶ 인덱싱 ──▶ SQLite FTS DB(index.db) ─
   `$RECYCLE.BIN/` 등) + 루트의 `.blinkignore`(gitignore 유사 글롭). 대소문자 무시.
 - **본문 추출 상한**: 파서가 콘텐츠를 읽고 크기가 전역 100MB 및 파서별 상한 이내일 때만 본문
   추출, 아니면 파일명만 색인.
+- **추출 결과 기록**(`ContentExtractor`): 본문 추출마다 `ExtractStatus`(`Ok`/`NotApplicable`/
+  `TooLarge`/`ReadDenied`/`CloudUnavailable`/`Encrypted`/`ParseError`/`EmptyText`)와 짧은
+  상세(예외 타입·메시지, 파일 속성)를 남긴다. 파서 실패 시 확장자 시그니처가 맞지 않으면
+  `Encrypted`(문서중앙화/DRM 의심), 클라우드 파일 오류·placeholder 속성이면 `CloudUnavailable`.
+  실패한 파일도 mtime이 같으면 다시 읽지 않으며, 폴더별 "다시 시도"(`retryFailed`)만 재추출한다.
 
 ### 가지치기 (`Pruner`)
 
@@ -89,9 +94,10 @@ config.json(folders[]) ──▶ 인덱싱 ──▶ SQLite FTS DB(index.db) ─
 ## 저장 (`Blink.Core/Store/SqliteFtsStore.cs`)
 
 - `documents` 테이블(`doc_id`=파일 절대경로 UNIQUE, `path`, `mtime`, `size`, `content`,
-  `is_bundle`, `member_count`) + FTS5 가상 테이블 `documents_fts`(`tokenize='unicode61'`).
+  `is_bundle`, `member_count`, `extract_status`, `extract_detail`) + FTS5 가상 테이블 `documents_fts`(`tokenize='unicode61'`).
 - `schema_meta.version`로 스키마 버전 관리, `Migrate()`가 구 DB에 신 컬럼을 추가(`CREATE …
-  IF NOT EXISTS` + `ALTER`). 신규 DB는 `InitSchema()`로 현재 스키마 생성.
+  IF NOT EXISTS` + `ALTER`). 신규 DB는 `InitSchema()`로 현재 스키마 생성. v3 마이그레이션은
+  본문 파서 대상인데 content가 빈 행의 mtime을 0으로 돌려 한 번 재추출시킨다.
 - WAL 저널, `busy_timeout`. 쓰기는 한 게이트로 직렬화, 읽기는 별도 게이트.
 - `IterDocsUnder(root)`/`FolderStats(root)`는 `doc_id=$p OR doc_id LIKE prefix+sep+'%'`
   **경로 프리픽스 쿼리**. 검색은 `bm25(documents_fts)` 순위.
@@ -122,7 +128,9 @@ config.json(folders[]) ──▶ 인덱싱 ──▶ SQLite FTS DB(index.db) ─
   플러시.
 - `LauncherWindow` + `ClassicView`(방향 A) / `SplitView`(방향 B) — 런처 레이아웃.
 - `SettingsWindow` — 폴더 추가/삭제, 폴더별 통계(`{n}파일 · {size} · 마지막 인덱싱 …`),
-  테마/액센트, 자동 인덱싱 주기.
+  테마/액센트, 자동 인덱싱 주기. 폴더 행에 본문 추출 실패 수와 마지막 실행 문제(실패/정리 보류)를 표시.
+- `ExtractFailuresWindow` + 런처 하단 "본문 추출 실패 N" 배지 — 폴더별·사유별 실패 목록, TSV 복사,
+  다시 시도.
 - 테마: `Theming/Oklch`·`ThemeManager`(값 기반 base color + 액센트, 시스템 다크/라이트 추종).
 - MVVM: `Mvvm/ObservableObject`, `ViewModels/*`.
 
