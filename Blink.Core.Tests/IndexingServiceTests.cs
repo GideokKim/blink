@@ -115,6 +115,59 @@ public sealed class IndexingServiceTests : IDisposable
         Assert.False(svc.IsBusy);
     }
 
+    [Fact]
+    public async Task ReindexAsync_ChunkVanishesBeforePrune_FiresPruneSkipped_AndStillCompletesFolder()
+    {
+        var dir = NewTree();
+        using var store = new HookStore
+        {
+            // Simulate the share dropping right after its files were read.
+            OnUpsertMany = _ => { if (Directory.Exists(dir)) Directory.Delete(dir, true); },
+        };
+        using var svc = new IndexingService();
+        var skipped = new List<(string Folder, string Chunk)>();
+        var completed = new List<string>();
+        svc.PruneSkipped += (f, c) => { lock (skipped) skipped.Add((f, c)); };
+        svc.FolderCompleted += f => { lock (completed) completed.Add(f); };
+
+        await svc.ReindexAsync(new[] { dir }, store);
+
+        Assert.Equal(dir, Assert.Single(skipped).Folder);
+        Assert.Equal(new[] { dir }, completed);
+    }
+
+    [Fact]
+    public async Task RetryFailedAsync_ReextractsFailedFiles_AndFiresCompleted()
+    {
+        var dir = NewTree();
+        var path = Path.Combine(dir, "drm.docx");
+        File.WriteAllBytes(path, System.Text.Encoding.ASCII.GetBytes("DRMONE ciphertext"));
+        var dbPath = Path.Combine(Path.GetTempPath(), $"blink-svc-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new SqliteFtsStore(dbPath);
+            using var svc = new IndexingService();
+            await svc.ReindexAsync(new[] { dir }, store);
+
+            var mtime = File.GetLastWriteTimeUtc(path);
+            File.WriteAllBytes(path, new byte[] { 0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0 });
+            File.SetLastWriteTimeUtc(path, mtime);
+
+            int completed = 0;
+            svc.Completed += () => Interlocked.Increment(ref completed);
+            await svc.RetryFailedAsync(dir, store);
+
+            Assert.Equal(1, completed);
+            Assert.Equal(ExtractStatus.ParseError, Assert.Single(store.IterExtractFailures(dir, 10)).Status);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            foreach (var f in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+                try { File.Delete(f); } catch { }
+        }
+    }
+
     public void Dispose()
     {
         foreach (var d in _tempDirs)
