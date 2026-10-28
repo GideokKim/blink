@@ -356,6 +356,11 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
     private static readonly string ReportableIn = string.Join(",",
         Enum.GetValues<ExtractStatus>().Where(s => s.IsReportable()).Select(s => (int)s));
 
+    // Blocking failures as an IN-list literal: sorted first so the listing limit can never fill up
+    // with informational rows (e.g. hundreds of over-cap files) while the badge counts failures.
+    private static readonly string FailureIn = string.Join(",",
+        Enum.GetValues<ExtractStatus>().Where(s => s.IsFailure()).Select(s => (int)s));
+
     public IReadOnlyDictionary<ExtractStatus, long> ExtractStatusCounts(string root)
     {
         var prefix = Path.GetFullPath(root);
@@ -386,7 +391,7 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
             cmd.CommandText =
                 "SELECT doc_id, extract_status, extract_detail FROM documents " +
                 $"WHERE extract_status IN ({ReportableIn}) AND (doc_id=$p OR doc_id LIKE $like) " +
-                "ORDER BY extract_status, doc_id LIMIT $limit;";
+                $"ORDER BY CASE WHEN extract_status IN ({FailureIn}) THEN 0 ELSE 1 END, extract_status, doc_id LIMIT $limit;";
             cmd.Parameters.AddWithValue("$p", prefix);
             cmd.Parameters.AddWithValue("$like", prefix.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "%");
             cmd.Parameters.AddWithValue("$limit", limit);

@@ -53,7 +53,8 @@ public interface IIndexStore : IDisposable
 
     /// <summary>
     /// Up to <paramref name="limit"/> documents under <paramref name="root"/> whose status is
-    /// reportable (<see cref="ExtractStatusInfo.IsReportable"/>), ordered by status then doc id.
+    /// reportable (<see cref="ExtractStatusInfo.IsReportable"/>): blocking failures first, then by
+    /// status and doc id, so the limit never hides failures behind informational rows.
     /// </summary>
     IReadOnlyList<ExtractFailure> IterExtractFailures(string root, int limit)
         => Array.Empty<ExtractFailure>();
