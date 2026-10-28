@@ -21,6 +21,7 @@ public partial class SettingsWindow : Window
 {
     private readonly AppConfig _config;
     private readonly Func<string, (long count, long bytes)>? _statsProvider;
+    private readonly Func<string, (long failures, string? issue)>? _healthProvider;
     private readonly ObservableCollection<FolderRow> _folders;
     private readonly ObservableCollection<IntervalOptionVm> _intervals;
     private string _selectedInterval;
@@ -32,16 +33,21 @@ public partial class SettingsWindow : Window
     /// <summary>Raised when the user requests a re-index with the current folder set.</summary>
     public event Action<IReadOnlyList<string>>? ReindexRequested;
 
+    /// <summary>Raised when the user clicks a folder row's "본문 실패" link (folder path).</summary>
+    public event Action<string>? ExtractFailuresRequested;
+
     /// <summary>Raised after the user saves, so the app can re-arm the auto-index cadence and sync UI.</summary>
     public event Action? SettingsSaved;
 
     public SettingsWindow(AppConfig config, IndexingStatusViewModel status,
         Func<string, (long count, long bytes)>? statsProvider = null,
-        Action? quitForUpdate = null)
+        Action? quitForUpdate = null,
+        Func<string, (long failures, string? issue)>? healthProvider = null)
     {
         InitializeComponent();
         _config = config;
         _statsProvider = statsProvider;
+        _healthProvider = healthProvider;
 
         // Live indexing status drives the status line + progress bar bindings.
         DataContext = status;
@@ -95,7 +101,8 @@ public partial class SettingsWindow : Window
             lastUtc = parsed;
         }
         (long count, long bytes)? stats = _statsProvider?.Invoke(path);
-        return new FolderRow(path, stats, lastUtc);
+        var (failures, issue) = _healthProvider?.Invoke(path) ?? default;
+        return new FolderRow(path, stats, lastUtc, failures, issue);
     }
 
     private void UpdateEmpty() =>
@@ -133,6 +140,12 @@ public partial class SettingsWindow : Window
             var row = _folders.FirstOrDefault(f => f.Path == path);
             if (row is not null) _folders.Remove(row);
         }
+    }
+
+    private void FailuresLink_Click(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is string path)
+            ExtractFailuresRequested?.Invoke(path);
     }
 
     private void Reindex_Click(object sender, RoutedEventArgs e)
@@ -271,8 +284,10 @@ public sealed class FolderRow
     public string ParentSeg { get; }
     public string Leaf { get; }
     public string Sub { get; }
+    public bool HasFailures { get; }
 
-    public FolderRow(string path, (long count, long bytes)? stats, DateTime? lastIndexedUtc)
+    public FolderRow(string path, (long count, long bytes)? stats, DateTime? lastIndexedUtc,
+        long extractFailures = 0, string? runIssue = null)
     {
         Path = path;
         var trimmed = path.TrimEnd('\\', '/');
@@ -288,7 +303,8 @@ public sealed class FolderRow
             Leaf = trimmed;
         }
 
-        Sub = FolderStatusFormat.Subtitle(stats, lastIndexedUtc, DateTime.UtcNow);
+        HasFailures = extractFailures > 0;
+        Sub = FolderStatusFormat.Subtitle(stats, lastIndexedUtc, DateTime.UtcNow, extractFailures, runIssue);
     }
 }
 

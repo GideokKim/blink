@@ -26,6 +26,9 @@ public partial class App : Application
     private AppConfig _config = new();
     private readonly IndexingStatusViewModel _status = new();
     private readonly Dictionary<string, DateTime> _pendingFolderTimes = new();
+    // Last run's per-folder problem (failed run / prune deferred), shown on the Settings folder
+    // row. In-memory only; a folder's entry is cleared when a new run of it starts.
+    private readonly Dictionary<string, string> _folderIssues = new(StringComparer.OrdinalIgnoreCase);
     private UpdateService? _updates;
     private ReleaseInfo? _pendingRelease;
     // Always-visible update surface in the tray. Unlike the balloon/toast, a menu item cannot be
@@ -70,8 +73,14 @@ public partial class App : Application
         _indexing.Completed += OnIndexingCompleted;                    // background thread → marshal
         // FolderCompleted fires on the background thread; just record under lock.
         _indexing.FolderCompleted += f => { lock (_pendingFolderTimes) _pendingFolderTimes[f] = DateTime.UtcNow; };
-        // A failed folder is skipped (no completion stamp) and the run continues; log for diagnosis.
-        _indexing.FolderFailed += (f, ex) => System.Diagnostics.Trace.WriteLine($"[Blink] indexing failed for '{f}': {ex}");
+        // A failed folder is skipped (no completion stamp) and the run continues; keep a short
+        // note for the Settings row and the full exception for diagnosis.
+        _indexing.FolderFailed += (f, ex) =>
+        {
+            lock (_folderIssues) _folderIssues[f] = FolderStatusFormat.RunFailed(ex);
+            System.Diagnostics.Trace.WriteLine($"[Blink] indexing failed for '{f}': {ex}");
+        };
+        _indexing.PruneSkipped += (f, _) => { lock (_folderIssues) _folderIssues[f] = FolderStatusFormat.PruneSkipped; };
 
         _hotkey = new HotkeyHook();
         _hotkey.HotkeyPressed += () => _launcher!.Summon();
@@ -107,9 +116,22 @@ public partial class App : Application
     private void StartReindex(IReadOnlyList<string> folders)
     {
         if (_store is null || _indexing is null) return;
+        lock (_folderIssues)
+            foreach (var f in folders) _folderIssues.Remove(f);
         _status.Begin();
         _ = _indexing.ReindexAsync(folders, _store);
     }
+
+    /// <summary>Settings-row health for <paramref name="folder"/>: blocking extract failures + last-run note.</summary>
+    private (long failures, string? issue) FolderHealth(string folder)
+    {
+        long failures = _store is null ? 0 : ExtractStatusText.FailureCount(_store.ExtractStatusCounts(folder));
+        string? issue;
+        lock (_folderIssues) _folderIssues.TryGetValue(folder, out issue);
+        return (failures, issue);
+    }
+
+    private void ShowExtractFailures(string? folder) { }
 
     private void OnIndexingCompleted()
         => Dispatcher.Invoke(() =>
@@ -207,8 +229,10 @@ public partial class App : Application
         var win = new SettingsWindow(
             _config, _status,
             root => _store is null ? (0L, 0L) : _store.FolderStats(root),
-            QuitApp);
+            QuitApp,
+            FolderHealth);
         win.ReindexRequested += folders => StartReindex(folders);
+        win.ExtractFailuresRequested += folder => ShowExtractFailures(folder);
         win.SettingsSaved += OnSettingsSaved;
         win.Show();
         win.Activate();
