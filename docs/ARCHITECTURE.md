@@ -61,10 +61,11 @@ config.json(folders[]) ──▶ 인덱싱 ──▶ SQLite FTS DB(index.db) ─
 - **본문 추출 상한**: 파서가 콘텐츠를 읽고 크기가 전역 100MB 및 파서별 상한 이내일 때만 본문
   추출, 아니면 파일명만 색인.
 - **추출 결과 기록**(`ContentExtractor`): 본문 추출마다 `ExtractStatus`(`Ok`/`NotApplicable`/
-  `TooLarge`/`ReadDenied`/`CloudUnavailable`/`Encrypted`/`ParseError`/`EmptyText`)와 짧은
+  `TooLarge`/`ReadDenied`/`CloudUnavailable`/`Encrypted`/`ParseError`/`EmptyText`/`Locked`)와 짧은
   상세(예외 타입·메시지, 파일 속성)를 남긴다. 파서 실패 시 확장자 시그니처가 맞지 않으면
   `Encrypted`(문서중앙화/DRM 의심), 클라우드 파일 오류·placeholder 속성이면 `CloudUnavailable`.
   실패한 파일도 mtime이 같으면 다시 읽지 않으며, 폴더별 "다시 시도"(`retryFailed`)만 재추출한다.
+  다른 프로그램이 연 파일(`Locked`)은 실패로 세지 않고 mtime 0으로 저장해 다음 실행에서 다시 읽는다.
 
 ### 가지치기 (`Pruner`)
 
