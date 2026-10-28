@@ -31,6 +31,9 @@ public static class ParserRegistry
                 _byExtension[ext] = parser;
     }
 
+    /// <summary>Every extension handled by a content parser (lower-case, leading dot).</summary>
+    public static IReadOnlyCollection<string> ContentExtensions => _byExtension.Keys;
+
     /// <summary>Returns the best-matching parser for <paramref name="path"/>.</summary>
     public static IParser GetParser(string path)
     {

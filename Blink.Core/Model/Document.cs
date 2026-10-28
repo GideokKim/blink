@@ -11,6 +11,9 @@ namespace Blink.Core.Model;
 /// <see cref="MemberCount"/> is how many real files it represents; its <see cref="DocId"/>
 /// is a synthetic <c>&lt;dir&gt;/__bundle__&lt;ext&gt;</c> path (the real members are not
 /// indexed individually).
+///
+/// <see cref="Status"/>/<see cref="Detail"/> record how the body was extracted (null for bundle
+/// markers and rows written before schema v3).
 /// </summary>
 public record Document(
     string DocId,
@@ -19,4 +22,6 @@ public record Document(
     long Size,
     string Content,
     bool IsBundle = false,
-    int MemberCount = 0);
+    int MemberCount = 0,
+    ExtractStatus? Status = null,
+    string? Detail = null);

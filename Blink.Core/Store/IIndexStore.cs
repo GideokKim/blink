@@ -43,4 +43,18 @@ public interface IIndexStore : IDisposable
     /// A root with no documents returns (0, 0).
     /// </summary>
     (long FileCount, long TotalBytes) FolderStats(string root);
+
+    /// <summary>
+    /// Per-status document counts under <paramref name="root"/> (same prefix rule as
+    /// <see cref="FolderStats"/>). Rows with no recorded status are not counted.
+    /// </summary>
+    IReadOnlyDictionary<ExtractStatus, long> ExtractStatusCounts(string root)
+        => new Dictionary<ExtractStatus, long>();
+
+    /// <summary>
+    /// Up to <paramref name="limit"/> documents under <paramref name="root"/> whose status is
+    /// reportable (<see cref="ExtractStatusInfo.IsReportable"/>), ordered by status then doc id.
+    /// </summary>
+    IReadOnlyList<ExtractFailure> IterExtractFailures(string root, int limit)
+        => Array.Empty<ExtractFailure>();
 }

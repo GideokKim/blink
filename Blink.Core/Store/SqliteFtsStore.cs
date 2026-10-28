@@ -1,5 +1,6 @@
 using System.Text;
 using Blink.Core.Model;
+using Blink.Core.Parsers;
 using Blink.Core.Tokenization;
 using Microsoft.Data.Sqlite;
 
@@ -90,7 +91,8 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
     // Current on-disk schema version. Bump when the schema changes and add a migration step.
     //   v1: documents(doc_id, path, mtime, size, content)
     //   v2: + is_bundle, member_count  (virtual bundle entries for collapsed file groups)
-    private const long SchemaVersion = 2;
+    //   v3: + extract_status, extract_detail  (why a body was or wasn't extracted)
+    private const long SchemaVersion = 3;
 
     private void InitSchema()
     {
@@ -107,7 +109,9 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
                 size         INTEGER NOT NULL,
                 content      TEXT NOT NULL,
                 is_bundle    INTEGER NOT NULL DEFAULT 0,
-                member_count INTEGER NOT NULL DEFAULT 0
+                member_count INTEGER NOT NULL DEFAULT 0,
+                extract_status INTEGER,
+                extract_detail TEXT
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(tokens, tokenize='unicode61');
         ");
@@ -135,7 +139,27 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
             AddColumnIfMissing("documents", "member_count", "INTEGER NOT NULL DEFAULT 0");
         }
 
+        if (from < 3)
+        {
+            // v2 → v3: record extraction outcomes. Rows a content parser should have filled but
+            // that hold an empty body were most likely silently failed extractions (the old
+            // indexer swallowed parser errors); zero their mtime so the next run re-extracts them
+            // once and records why.
+            AddColumnIfMissing("documents", "extract_status", "INTEGER");
+            AddColumnIfMissing("documents", "extract_detail", "TEXT");
+            ResetSilentlyEmptied();
+        }
+
         Exec($"UPDATE schema_meta SET version={SchemaVersion};");
+    }
+
+    private void ResetSilentlyEmptied()
+    {
+        var exts = ParserRegistry.ContentExtensions.ToArray();
+        if (exts.Length == 0) return;
+        var likes = string.Join(" OR ", exts.Select((_, i) => $"lower(doc_id) LIKE $e{i}"));
+        ExecParam($"UPDATE documents SET mtime=0 WHERE is_bundle=0 AND content='' AND ({likes});", null,
+            exts.Select((e, i) => ($"$e{i}", (object)("%" + e.ToLowerInvariant()))).ToArray());
     }
 
     private void AddColumnIfMissing(string table, string column, string definition)
@@ -184,11 +208,14 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
             ExecParam("DELETE FROM documents WHERE rowid=$r;", tx, ("$r", old));
         }
 
-        ExecParam(@"INSERT INTO documents(doc_id, path, mtime, size, content, is_bundle, member_count)
-                    VALUES($id, $path, $mtime, $size, $content, $bundle, $members);", tx,
+        ExecParam(@"INSERT INTO documents(doc_id, path, mtime, size, content, is_bundle, member_count,
+                                          extract_status, extract_detail)
+                    VALUES($id, $path, $mtime, $size, $content, $bundle, $members, $status, $detail);", tx,
             ("$id", doc.DocId), ("$path", doc.Path), ("$mtime", doc.Mtime),
             ("$size", doc.Size), ("$content", doc.Content),
-            ("$bundle", doc.IsBundle ? 1 : 0), ("$members", doc.MemberCount));
+            ("$bundle", doc.IsBundle ? 1 : 0), ("$members", doc.MemberCount),
+            ("$status", doc.Status is ExtractStatus st ? (int)st : DBNull.Value),
+            ("$detail", (object?)doc.Detail ?? DBNull.Value));
 
         long rowid;
         using (var rid = _conn.CreateCommand())
@@ -323,6 +350,52 @@ public sealed class SqliteFtsStore : IIndexStore, IContentStore
                 return (reader.GetInt64(0), reader.GetInt64(1));
             return (0L, 0L);
         }
+    }
+
+    // Reportable statuses as an IN-list literal (enum ints; no user input).
+    private static readonly string ReportableIn = string.Join(",",
+        Enum.GetValues<ExtractStatus>().Where(s => s.IsReportable()).Select(s => (int)s));
+
+    public IReadOnlyDictionary<ExtractStatus, long> ExtractStatusCounts(string root)
+    {
+        var prefix = Path.GetFullPath(root);
+        var result = new Dictionary<ExtractStatus, long>();
+        lock (_readGate)
+        {
+            using var cmd = _readConn.CreateCommand();
+            cmd.CommandText =
+                "SELECT extract_status, COUNT(*) FROM documents " +
+                "WHERE extract_status IS NOT NULL AND (doc_id=$p OR doc_id LIKE $like) " +
+                "GROUP BY extract_status;";
+            cmd.Parameters.AddWithValue("$p", prefix);
+            cmd.Parameters.AddWithValue("$like", prefix.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "%");
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result[(ExtractStatus)reader.GetInt32(0)] = reader.GetInt64(1);
+        }
+        return result;
+    }
+
+    public IReadOnlyList<ExtractFailure> IterExtractFailures(string root, int limit)
+    {
+        var prefix = Path.GetFullPath(root);
+        var result = new List<ExtractFailure>();
+        lock (_readGate)
+        {
+            using var cmd = _readConn.CreateCommand();
+            cmd.CommandText =
+                "SELECT doc_id, extract_status, extract_detail FROM documents " +
+                $"WHERE extract_status IN ({ReportableIn}) AND (doc_id=$p OR doc_id LIKE $like) " +
+                "ORDER BY extract_status, doc_id LIMIT $limit;";
+            cmd.Parameters.AddWithValue("$p", prefix);
+            cmd.Parameters.AddWithValue("$like", prefix.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar + "%");
+            cmd.Parameters.AddWithValue("$limit", limit);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result.Add(new ExtractFailure(reader.GetString(0), (ExtractStatus)reader.GetInt32(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
+        return result;
     }
 
     /// <summary>
