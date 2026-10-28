@@ -21,17 +21,30 @@ public sealed class IndexingService : IDisposable
     /// <summary>Fired (on the background thread) when one folder fails; the run moves on to the next.</summary>
     public event Action<string, Exception>? FolderFailed;
 
+    /// <summary>Fired (on the background thread) when a chunk was unreachable at prune time, so
+    /// its deletions were deferred: (configured folder, chunk root).</summary>
+    public event Action<string, string>? PruneSkipped;
+
     /// <summary>True while a reindex run is in flight. Auto-cadence ticks use this to avoid
     /// cancelling and restarting an ongoing run.</summary>
     public bool IsBusy => Volatile.Read(ref _running) > 0;
 
     /// <summary>Re-index all configured folders into <paramref name="store"/> off the UI thread.</summary>
     public Task ReindexAsync(IEnumerable<string> folders, IIndexStore store)
+        => Run(folders.ToList(), store, retryFailed: false);
+
+    /// <summary>
+    /// Re-index one configured folder, re-extracting files whose previous extraction failed even
+    /// if unchanged (the manual "다시 시도"). Same events and cancellation as <see cref="ReindexAsync"/>.
+    /// </summary>
+    public Task RetryFailedAsync(string folder, IIndexStore store)
+        => Run(new List<string> { folder }, store, retryFailed: true);
+
+    private Task Run(List<string> folderList, IIndexStore store, bool retryFailed)
     {
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-        var folderList = folders.ToList();
 
         // Progress<T> captures the current SynchronizationContext (the UI thread) so
         // ProgressChanged handlers run on the UI thread.
@@ -58,14 +71,15 @@ public sealed class IndexingService : IDisposable
                         foreach (var chunk in RootExpander.Expand(folder))
                         {
                             ct.ThrowIfCancellationRequested();
-                            _indexer.Index(chunk.EnumRoot, folder, chunk.Recursive, store, progress, ct);
+                            _indexer.Index(chunk.EnumRoot, folder, chunk.Recursive, store, progress, ct, retryFailed);
 
                             // Remove entries for files deleted since the last run. Guarded against
                             // a vanished chunk (RootUnavailableException) so a transient mount drop
                             // can't purge the index — applied per chunk, so one dropped share
-                            // doesn't skip pruning its siblings.
+                            // doesn't skip pruning its siblings. The skip is reported so the UI can
+                            // say the drive was offline instead of silently keeping stale entries.
                             try { pruner.Apply(chunk.EnumRoot, store); }
-                            catch (RootUnavailableException) { /* skip prune for this chunk */ }
+                            catch (RootUnavailableException) { PruneSkipped?.Invoke(folder, chunk.EnumRoot); }
                         }
 
                         FolderCompleted?.Invoke(folder);
