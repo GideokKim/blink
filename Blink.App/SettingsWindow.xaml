@@ -302,15 +302,17 @@
                                                                  Text="{Binding Leaf, Mode=OneWay}"
                                                                  Foreground="{DynamicResource Blink.Txt}"/>
                                                         </TextBlock>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                                            <TextBlock Text="{Binding Sub, Mode=OneWay}" FontSize="11.5"
-                                                                       Foreground="{DynamicResource Blink.TxtDim}"
-                                                                       TextTrimming="CharacterEllipsis"/>
-                                                            <TextBlock Text="보기" FontSize="11.5" Margin="8,0,0,0" Cursor="Hand"
+                                                        <!-- DockPanel (not a horizontal StackPanel) so the subtitle gets a bounded
+                                                             width and trims, keeping the "보기" link visible. -->
+                                                        <DockPanel Margin="0,3,0,0" LastChildFill="True">
+                                                            <TextBlock DockPanel.Dock="Right" Text="보기" FontSize="11.5" Margin="8,0,0,0" Cursor="Hand"
                                                                        Foreground="{DynamicResource Blink.Accent}" TextDecorations="Underline"
                                                                        Tag="{Binding Path, Mode=OneWay}" MouseLeftButtonUp="FailuresLink_Click"
                                                                        Visibility="{Binding HasFailures, Converter={StaticResource Blink.BoolToVis}}"/>
-                                                        </StackPanel>
+                                                            <TextBlock Text="{Binding Sub, Mode=OneWay}" FontSize="11.5"
+                                                                       Foreground="{DynamicResource Blink.TxtDim}"
+                                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Sub, Mode=OneWay}"/>
+                                                        </DockPanel>
                                                     </StackPanel>
                                                     <Button Grid.Column="2" Style="{StaticResource RemoveBtn}"
                                                             Click="RemoveFolder_Click" ToolTip="제거"
