@@ -100,6 +100,27 @@ public sealed class ContentExtractorTests : IDisposable
         Assert.Equal(ExtractStatus.CloudUnavailable, ContentExtractor.Classify(ex, path));
     }
 
+    [Theory]
+    [InlineData(unchecked((int)0x80070020))] // ERROR_SHARING_VIOLATION
+    [InlineData(unchecked((int)0x80070021))] // ERROR_LOCK_VIOLATION
+    public void Classify_SharingOrLockViolation_IsLocked_AndNotAFailure(int hr)
+    {
+        var path = TempFile("a.xlsx", ZipHeader);
+        var ex = new InvalidOperationException("wrapped", new IOException("in use", hr));
+        var status = ContentExtractor.Classify(ex, path);
+        Assert.Equal(ExtractStatus.Locked, status);
+        Assert.False(status.IsFailure());
+        Assert.True(status.IsReportable());
+    }
+
+    [Fact]
+    public void StoredMtime_Locked_IsZeroSoNextRunRetries_OthersKeepRealMtime()
+    {
+        Assert.Equal(0, Indexer.StoredMtime(1234, ExtractStatus.Locked));
+        Assert.Equal(1234, Indexer.StoredMtime(1234, ExtractStatus.Encrypted));
+        Assert.Equal(1234, Indexer.StoredMtime(1234, ExtractStatus.Ok));
+    }
+
     [Fact]
     public void Classify_Timeout_IsCloudUnavailable()
     {
