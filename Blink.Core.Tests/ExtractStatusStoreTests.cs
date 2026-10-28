@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Blink.Core.Tests;
 
+[Collection(SqliteCollection.Name)]
 public sealed class ExtractStatusStoreTests : IDisposable
 {
     private readonly List<string> _tempPaths = new();

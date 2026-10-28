@@ -4,6 +4,7 @@ using Blink.Core.Store;
 
 namespace Blink.Core.Tests;
 
+[Collection(SqliteCollection.Name)]
 public sealed class IndexingServiceTests : IDisposable
 {
     private readonly List<string> _tempDirs = new();
