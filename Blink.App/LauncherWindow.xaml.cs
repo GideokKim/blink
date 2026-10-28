@@ -31,6 +31,9 @@ public partial class LauncherWindow : Window
     /// <summary>Raised when the user clicks the footer update badge; App owns the release details.</summary>
     public event Action? UpdateRequested;
 
+    /// <summary>Raised when the user clicks the footer extract-failure badge.</summary>
+    public event Action? ExtractFailuresRequested;
+
     private const double WidthClassic = 640;
     private const double WidthSplit = 880;
 
@@ -82,6 +85,13 @@ public partial class LauncherWindow : Window
     {
         UpdateBadge.Visibility = version is null ? Visibility.Collapsed : Visibility.Visible;
         if (version is not null) UpdateBadgeText.Text = $"v{version}";
+    }
+
+    /// <summary>Show/hide the footer extract-failure badge. 0 hides it.</summary>
+    public void SetExtractFailures(long count)
+    {
+        ExtractBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (count > 0) ExtractBadgeText.Text = $"본문 추출 실패 {count:N0}";
     }
 
     // ── Summon / hide ───────────────────────────────────────────────────────────
@@ -222,6 +232,8 @@ public partial class LauncherWindow : Window
     }
 
     private void UpdateBadge_Click(object sender, MouseButtonEventArgs e) => UpdateRequested?.Invoke();
+
+    private void ExtractBadge_Click(object sender, MouseButtonEventArgs e) => ExtractFailuresRequested?.Invoke();
 
     // ── Activation (Enter / row click / preview buttons) ────────────────────────
     private void HandleAction(string action)
