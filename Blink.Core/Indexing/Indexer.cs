@@ -63,8 +63,13 @@ public sealed class Indexer
     /// root) so chunking never changes WHAT gets indexed — a <c>.blinkignore</c> and root-relative
     /// patterns at the configured root still apply to a deeper chunk. When <paramref name="recursive"/>
     /// is false only the chunk's direct files are indexed (its subfolders belong to sibling chunks).
+    /// When <paramref name="retryFailed"/> is true, files whose stored extraction failed
+    /// (<see cref="ExtractStatusInfo.IsFailure"/>) are re-extracted even if unchanged — the manual
+    /// "다시 시도" after a DRM allow-list or offline-sync change. Ordinary runs skip them so an
+    /// all-failing drive isn't re-read every auto-index tick.
     /// </summary>
-    public void Index(string enumRoot, string excludeRoot, bool recursive, IIndexStore store, IProgress<IndexProgress>? progress, CancellationToken ct)
+    public void Index(string enumRoot, string excludeRoot, bool recursive, IIndexStore store,
+        IProgress<IndexProgress>? progress, CancellationToken ct, bool retryFailed = false)
     {
         var excluder = _excluder ?? FileExcluder.ForRoot(excludeRoot);
         var rootFull = Path.GetFullPath(enumRoot);
@@ -109,6 +114,11 @@ public sealed class Indexer
         foreach (var (docId, mtime) in store.IterDocsUnder(enumRoot))
             known[docId] = (long)mtime;
 
+        if (retryFailed)
+            foreach (var f in store.IterExtractFailures(enumRoot, int.MaxValue))
+                if (f.Status.IsFailure())
+                    known.Remove(f.DocId);
+
         // Drop bundle markers for groups that are no longer bundles.
         var staleBundleIds = counts.Keys.Where(k => !bundleGroups.Contains(k))
             .Select(BundleId).Where(known.ContainsKey).ToList();
@@ -151,10 +161,10 @@ public sealed class Indexer
             // Announce the file BEFORE the (potentially slow) extraction so the UI shows where it
             // is actually stuck, not the previously-finished file.
             progress?.Report(new IndexProgress(processed, total, path));
-            string content = ShouldExtract(parser.ReadsContent, size, parser.MaxParseSize, MaxContentBytes)
-                ? SafeExtract(parser, path) : string.Empty;
+            var outcome = ContentExtractor.Extract(parser, path, size, MaxContentBytes);
 
-            batch.Add(new Document(docId, path, mtime, size, content));
+            batch.Add(new Document(docId, path, mtime, size, outcome.Text,
+                Status: outcome.Status, Detail: outcome.Detail));
             if (batch.Count >= BatchSize) { store.UpsertMany(batch); batch.Clear(); }
 
             progress?.Report(new IndexProgress(processed, total, path));
@@ -217,12 +227,6 @@ public sealed class Indexer
     /// </summary>
     public static bool ShouldExtract(bool readsContent, long size, long? parserCap, long globalCap)
         => readsContent && size <= Math.Min(globalCap, parserCap ?? long.MaxValue);
-
-    private static string SafeExtract(IParser parser, string path)
-    {
-        try { return parser.ExtractText(path); }
-        catch { return string.Empty; } // unreadable file → filename-only
-    }
 
     private static long SafeSize(string path)
     {
