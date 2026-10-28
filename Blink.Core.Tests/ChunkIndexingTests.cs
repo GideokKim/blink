@@ -8,6 +8,7 @@ namespace Blink.Core.Tests;
 /// overload and the DB-compatibility invariant: chunked indexing produces the same stored
 /// document set as single-root indexing, so an existing database upgrades cleanly.
 /// </summary>
+[Collection(SqliteCollection.Name)]
 public sealed class ChunkIndexingTests : IDisposable
 {
     private readonly List<string> _tempDirs = new();
