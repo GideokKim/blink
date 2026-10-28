@@ -163,7 +163,7 @@ public sealed class Indexer
             progress?.Report(new IndexProgress(processed, total, path));
             var outcome = ContentExtractor.Extract(parser, path, size, MaxContentBytes);
 
-            batch.Add(new Document(docId, path, mtime, size, outcome.Text,
+            batch.Add(new Document(docId, path, StoredMtime(mtime, outcome.Status), size, outcome.Text,
                 Status: outcome.Status, Detail: outcome.Detail));
             if (batch.Count >= BatchSize) { store.UpsertMany(batch); batch.Clear(); }
 
@@ -220,6 +220,14 @@ public sealed class Indexer
     /// <summary>Synthetic doc id for a bundle group: <c>&lt;dir&gt;/__bundle__&lt;ext&gt;</c>.</summary>
     private static string BundleId((string Dir, string Ext) key)
         => Path.Combine(key.Dir, BundleMarker + key.Ext);
+
+    /// <summary>
+    /// The mtime to store for a file. A <see cref="ExtractStatus.Locked"/> outcome stores 0 so the
+    /// next run's incremental check sees a mismatch and retries once the other program lets go —
+    /// closing Excel without saving leaves the real mtime unchanged.
+    /// </summary>
+    public static long StoredMtime(long mtime, ExtractStatus status)
+        => status == ExtractStatus.Locked ? 0 : mtime;
 
     /// <summary>
     /// Pure gate: extract a file's body only if its parser reads content AND its size is within

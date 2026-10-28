@@ -14,6 +14,7 @@ public static class ExtractStatusText
         ExtractStatus.ParseError => "파싱 오류",
         ExtractStatus.TooLarge => "크기 상한 초과",
         ExtractStatus.EmptyText => "텍스트 없음",
+        ExtractStatus.Locked => "다른 프로그램이 사용 중",
         ExtractStatus.NotApplicable => "파일명만 색인",
         _ => "정상",
     };
@@ -26,6 +27,7 @@ public static class ExtractStatusText
         ExtractStatus.ParseError => "파일이 손상되었거나 지원하지 않는 형식 변형입니다.",
         ExtractStatus.TooLarge => "본문 추출 상한을 넘어 파일명만 색인했습니다.",
         ExtractStatus.EmptyText => "스캔본 등 추출 가능한 텍스트가 없습니다.",
+        ExtractStatus.Locked => "다른 프로그램이 파일을 열고 있어 읽지 못했습니다. 다음 인덱싱 때 다시 읽습니다.",
         _ => string.Empty,
     };
 
