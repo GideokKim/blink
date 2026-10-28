@@ -17,11 +17,11 @@ public partial class ExtractFailuresWindow : Window
     private const int MaxRows = 500;
 
     private readonly Func<string, IReadOnlyList<ExtractFailure>> _list;
-    private readonly Action<string> _retry;
+    private readonly Func<string, bool> _retry;
     private IReadOnlyList<ExtractFailure> _current = Array.Empty<ExtractFailure>();
 
     public ExtractFailuresWindow(IReadOnlyList<string> folders, string? initialFolder,
-        Func<string, IReadOnlyList<ExtractFailure>> list, Action<string> retry)
+        Func<string, IReadOnlyList<ExtractFailure>> list, Func<string, bool> retry)
     {
         InitializeComponent();
         _list = list;
@@ -59,8 +59,9 @@ public partial class ExtractFailuresWindow : Window
     private void Retry_Click(object sender, RoutedEventArgs e)
     {
         if (FolderPicker.SelectedItem is not string folder) return;
-        RetryStatus.Text = "다시 시도 중…";
-        _retry(folder);
+        // The retry can't start while another run is in flight (it would cancel that run); say so
+        // instead of implying a retry that never happened.
+        RetryStatus.Text = _retry(folder) ? "다시 시도 중…" : "인덱싱이 진행 중입니다. 끝난 뒤 다시 시도하세요.";
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

@@ -146,10 +146,12 @@ public partial class App : Application
             f => store.IterExtractFailures(f, ExtractFailuresWindow.RowLimit),
             f =>
             {
-                if (_indexing is null || _indexing.IsBusy) return; // a run is already refreshing it
+                // Starting now would cancel the in-flight run; the window tells the user to wait.
+                if (_indexing is null || _indexing.IsBusy) return false;
                 lock (_folderIssues) _folderIssues.Remove(f);
                 _status.Begin();
                 _ = _indexing.RetryFailedAsync(f, store);
+                return true;
             });
         _failures.Closed += (_, _) => _failures = null;
         _failures.Show();
