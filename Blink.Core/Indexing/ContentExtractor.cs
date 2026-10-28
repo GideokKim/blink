@@ -31,6 +31,10 @@ public static class ContentExtractor
     private const int SemTimeout = unchecked((int)0x80070079);
     private const int Win32Timeout = unchecked((int)0x800705B4);
 
+    // The file is open in another program (Excel/Word hold an exclusive handle while editing).
+    private const int SharingViolation = unchecked((int)0x80070020);
+    private const int LockViolation = unchecked((int)0x80070021);
+
     private static readonly byte[] Zip = { 0x50, 0x4B, 0x03, 0x04 };
     private static readonly Dictionary<string, byte[]> PrefixSignatures = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -74,6 +78,8 @@ public static class ContentExtractor
         {
             if (e is UnauthorizedAccessException)
                 return ExtractStatus.ReadDenied;
+            if (e is IOException { HResult: SharingViolation or LockViolation })
+                return ExtractStatus.Locked;
             if (e is TimeoutException)
                 return ExtractStatus.CloudUnavailable;
             if (e is IOException io && (IsCloudHResult(io.HResult) || cloudAttr))

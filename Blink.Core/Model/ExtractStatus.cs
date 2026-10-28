@@ -20,6 +20,8 @@ public enum ExtractStatus
     ParseError = 6,
     /// <summary>Parsed fine but no text (e.g. a scanned PDF).</summary>
     EmptyText = 7,
+    /// <summary>Open in another program (sharing/lock violation). Transient: retried next run.</summary>
+    Locked = 8,
 }
 
 public static class ExtractStatusInfo
@@ -31,7 +33,7 @@ public static class ExtractStatusInfo
 
     /// <summary>Statuses listed in the failures window: failures plus informational skips.</summary>
     public static bool IsReportable(this ExtractStatus s)
-        => s.IsFailure() || s is ExtractStatus.TooLarge or ExtractStatus.EmptyText;
+        => s.IsFailure() || s is ExtractStatus.TooLarge or ExtractStatus.EmptyText or ExtractStatus.Locked;
 }
 
 /// <summary>One document whose body was not extracted, as listed by the store.</summary>
