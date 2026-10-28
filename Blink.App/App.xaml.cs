@@ -66,6 +66,8 @@ public partial class App : Application
         _launcher.SetDirection(DirectionOf(_config));
         _launcher.SetIndexMode(_store.Count());
         _launcher.UpdateRequested += () => { if (_pendingRelease is not null) ShowUpdateWindow(_pendingRelease); };
+        _launcher.ExtractFailuresRequested += () => ShowExtractFailures(null);
+        RefreshExtractBadge();
 
         // Indexing progress is surfaced live via _status to the launcher footer and Settings.
         _indexing = new IndexingService();
@@ -131,7 +133,37 @@ public partial class App : Application
         return (failures, issue);
     }
 
-    private void ShowExtractFailures(string? folder) { }
+    private ExtractFailuresWindow? _failures;
+
+    /// <summary>Open (or re-focus) the extract-failure details, optionally on <paramref name="folder"/>.</summary>
+    private void ShowExtractFailures(string? folder)
+    {
+        if (_store is null) return;
+        if (_failures is { IsLoaded: true }) { _failures.Activate(); return; }
+        var store = _store;
+        _failures = new ExtractFailuresWindow(
+            _config.Folders, folder,
+            f => store.IterExtractFailures(f, ExtractFailuresWindow.RowLimit),
+            f =>
+            {
+                if (_indexing is null || _indexing.IsBusy) return; // a run is already refreshing it
+                lock (_folderIssues) _folderIssues.Remove(f);
+                _status.Begin();
+                _ = _indexing.RetryFailedAsync(f, store);
+            });
+        _failures.Closed += (_, _) => _failures = null;
+        _failures.Show();
+        _failures.Activate();
+    }
+
+    /// <summary>Recompute the launcher footer badge from blocking failures across configured folders.</summary>
+    private void RefreshExtractBadge()
+    {
+        if (_store is null || _launcher is null) return;
+        var store = _store;
+        long total = _config.Folders.Sum(f => ExtractStatusText.FailureCount(store.ExtractStatusCounts(f)));
+        _launcher.SetExtractFailures(total);
+    }
 
     private void OnIndexingCompleted()
         => Dispatcher.Invoke(() =>
@@ -139,6 +171,8 @@ public partial class App : Application
             int count = _store?.Count() ?? 0;
             _status.Complete(count);
             _launcher?.SetIndexMode(count); // flip to real results once the index is populated
+            RefreshExtractBadge();
+            _failures?.Refresh();
 
             // Flush the per-folder completion timestamps accumulated during this run.
             lock (_pendingFolderTimes)
@@ -255,6 +289,7 @@ public partial class App : Application
     {
         _autoIndex?.Configure(_config.AutoIndexInterval);
         _launcher?.SetDirection(DirectionOf(_config));
+        RefreshExtractBadge();
         ThemeManager.Apply(_config.ThemeMode, _config.BaseColor, _config.Accent);
         _dirSync?.Invoke();
     }

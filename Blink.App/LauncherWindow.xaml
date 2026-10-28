@@ -101,6 +101,17 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <!-- Extract-failure badge: hidden until App.RefreshExtractBadge reports a non-zero count. -->
+                            <Border x:Name="ExtractBadge" Style="{StaticResource Blink.ContentBadge}"
+                                    Margin="0,0,14,0" Cursor="Hand" Visibility="Collapsed"
+                                    MouseLeftButtonUp="ExtractBadge_Click" ToolTip="본문을 읽지 못한 문서가 있습니다">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="!" FontSize="11" FontWeight="Bold" Margin="0,0,4,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource Blink.Accent}"/>
+                                    <TextBlock x:Name="ExtractBadgeText" Style="{StaticResource Blink.MonoFaint}"
+                                               Foreground="{DynamicResource Blink.Accent}"/>
+                                </StackPanel>
+                            </Border>
                             <!-- Update-available badge: hidden until App.OnUpdateAvailable calls SetUpdateAvailable. -->
                             <Border x:Name="UpdateBadge" Style="{StaticResource Blink.ContentBadge}"
                                     Margin="0,0,14,0" Cursor="Hand" Visibility="Collapsed"
